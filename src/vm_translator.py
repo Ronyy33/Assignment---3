@@ -1,59 +1,75 @@
+"""
+vm_translator - Main entry point orchestration driver for the stack VM to Hack ASM translator.
+"""
+
 import sys
 import os
-from vm_parser import Parser, C_ARITHMETIC, C_PUSH, C_POP, C_LABEL, C_GOTO, C_IF, C_FUNCTION, C_RETURN, C_CALL
-from code_writer import CodeWriter
+from vm_parser import (
+    InstructionReader, CMD_ARITHMETIC, CMD_PUSH, CMD_POP, CMD_LABEL,
+    CMD_GOTO, CMD_IF, CMD_FUNCTION, CMD_RETURN, CMD_CALL
+)
+from code_writer import AssemblyEmitter
 
-def main():
+
+def execute_translation():
+    """
+    Main driver running argument verification, setup, and parsing orchestrations.
+    """
     if len(sys.argv) != 2:
         return
 
-    input_path = sys.argv[1].rstrip('/\\')
-    vm_files = []
-    output_path = ""
+    arg_path = sys.argv[1].rstrip('/\\')
+    files_to_translate = []
+    output_asm_path = ""
 
-    if os.path.isfile(input_path):
-        vm_files = [input_path]
-        output_path = input_path.replace(".vm", ".asm")
-        is_directory = False
-    elif os.path.isdir(input_path):
-        vm_files = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.endswith(".vm")]
-        dir_name = os.path.basename(input_path)
-        output_path = os.path.join(input_path, dir_name + ".asm")
-        is_directory = True
+    if os.path.isfile(arg_path):
+        files_to_translate = [arg_path]
+        output_asm_path = arg_path.replace(".vm", ".asm")
+        is_dir_mode = False
+    elif os.path.isdir(arg_path):
+        files_to_translate = [os.path.join(arg_path, f) for f in os.listdir(arg_path) if f.endswith(".vm")]
+        root_dir_name = os.path.basename(arg_path)
+        output_asm_path = os.path.join(arg_path, root_dir_name + ".asm")
+        is_dir_mode = True
     else:
         return
     
-    writer = CodeWriter(output_path)
+    # Initialize Assembly Emitter
+    asm_emitter = AssemblyEmitter(output_asm_path)
 
-    if is_directory:
-        writer.write_init()
+    # Emit bootstrap runtime code if translating a directory
+    if is_dir_mode:
+        asm_emitter.emit_bootstrap_code()
 
-    for vm_file in vm_files:
-        writer.set_file_name(vm_file)
-        parser = Parser(vm_file)
+    # Process each VM file sequentially
+    for target_vm_file in files_to_translate:
+        asm_emitter.update_active_file(target_vm_file)
+        reader = InstructionReader(target_vm_file)
 
-        while parser.has_more_commands():
-            parser.advance()
-            cmd_type = parser.command_type()
+        # Loop through instructions
+        while reader.has_remaining_commands():
+            reader.next_command()
+            command_type = reader.get_command_type()
 
-            if cmd_type == C_ARITHMETIC:
-                writer.write_arithmetic(parser.arg1())
-            elif cmd_type in (C_PUSH, C_POP):
-                writer.write_push_pop(cmd_type, parser.arg1(), parser.arg2())
-            elif cmd_type == C_LABEL:
-                writer.write_label(parser.arg1())
-            elif cmd_type == C_GOTO:
-                writer.write_goto(parser.arg1())
-            elif cmd_type == C_IF:
-                writer.write_if(parser.arg1())
-            elif cmd_type == C_FUNCTION:
-                writer.write_function(parser.arg1(), parser.arg2())
-            elif cmd_type == C_CALL:
-                writer.write_call(parser.arg1(), parser.arg2())
-            elif cmd_type == C_RETURN:
-                writer.write_return()
+            if command_type == CMD_ARITHMETIC:
+                asm_emitter.emit_arithmetic_command(reader.get_first_arg())
+            elif command_type in (CMD_PUSH, CMD_POP):
+                asm_emitter.emit_push_pop_command(command_type, reader.get_first_arg(), reader.get_second_arg())
+            elif command_type == CMD_LABEL:
+                asm_emitter.emit_branch_label(reader.get_first_arg())
+            elif command_type == CMD_GOTO:
+                asm_emitter.emit_goto_command(reader.get_first_arg())
+            elif command_type == CMD_IF:
+                asm_emitter.emit_if_goto_command(reader.get_first_arg())
+            elif command_type == CMD_FUNCTION:
+                asm_emitter.emit_function_declaration(reader.get_first_arg(), reader.get_second_arg())
+            elif command_type == CMD_CALL:
+                asm_emitter.emit_function_call(reader.get_first_arg(), reader.get_second_arg())
+            elif command_type == CMD_RETURN:
+                asm_emitter.emit_return_statement()
 
-    writer.close()
+    asm_emitter.close_emitter()
+
 
 if __name__ == "__main__":
-    main()
+    execute_translation()

@@ -107,14 +107,14 @@ There are two main deliverables: a Jack program implementing 2D convolution (\te
 The compiler is split into five Python modules:
 
 \begin{itemize}
-    \item \textbf{JackTokenizer.py}: Strips comments using a state machine and tokenizes the source into keywords, symbols, integer constants, string constants, and identifiers. Writes the token XML file (\texttt{<Class>T.xml}).
-    \item \textbf{CompilationEngine.py}: Recursive-descent parser implementing every non-terminal in the Jack grammar. Simultaneously writes the parse tree XML (\texttt{<Class>.xml}) and emits VM code through the VMWriter.
-    \item \textbf{SymbolTable.py}: Two-scope symbol table (class-level and subroutine-level) mapping identifiers to \texttt{(type, kind, index)}.
-    \item \textbf{VMWriter.py}: Thin wrapper that writes VM commands (\texttt{push}, \texttt{pop}, \texttt{call}, \texttt{function}, etc.) to the output file.
+    \item \textbf{JackTokenizer.py}: Strips comments using a character-by-character state machine and tokenizes the source into keywords, symbols, integer constants, string constants, and identifiers. Defines the \texttt{JackLexicalLexer} class. Writes the token XML file (\texttt{<Class>T.xml}).
+    \item \textbf{CompilationEngine.py}: Recursive-descent parser implementing every non-terminal in the Jack grammar. Defines the \texttt{SyntaxAnalyzer} class. Simultaneously writes the parse tree XML (\texttt{<Class>.xml}) and emits VM code through the \texttt{BytecodeWriter}.
+    \item \textbf{SymbolTable.py}: Two-scope symbol table (class-level and subroutine-level) defining the \texttt{LexicalScopeTable} class mapping identifiers to \texttt{(type, kind, index)}.
+    \item \textbf{VMWriter.py}: Thin wrapper that writes VM commands via the \texttt{BytecodeWriter} class to the output file.
     \item \textbf{JackCompiler.py}: Entry point that wires everything together. Takes a \texttt{.jack} file or directory and runs the full pipeline.
 \end{itemize}
 
-The key design decision was to have the CompilationEngine do both XML generation and VM code generation in a single pass. This means every \texttt{compile\_*} method writes XML tags while also emitting VM instructions. An alternative would have been two separate passes, but the single-pass approach keeps the code simpler and avoids having to maintain a separate AST data structure.
+The key design decision was to have the \texttt{SyntaxAnalyzer} do both XML generation and VM code generation in a single pass. This means every \texttt{parse\_*} method writes XML tags while also emitting VM instructions via the \texttt{BytecodeWriter}. An alternative would have been two separate passes, but the single-pass approach keeps the code simpler and avoids having to maintain a separate AST data structure.
 
 % ============================================================
 \section{Tokenizer Design}
@@ -144,25 +144,25 @@ After comment stripping, the tokenizer walks the cleaned source character by cha
     \item Alphanumeric sequences starting with a letter or underscore are checked against the keyword set; if found, they're \texttt{keyword} tokens, otherwise \texttt{identifier} tokens.
 \end{itemize}
 
-The five XML-unsafe symbols (\texttt{<}, \texttt{>}, \texttt{\&}, \texttt{"}) are escaped in the XML output. One bug I hit early on was escaping \texttt{\&} \emph{after} \texttt{<}, which turned \texttt{\&lt;} into \texttt{\&amp;lt;}. The fix was to always escape \texttt{\&} first.
+The five XML-unsafe symbols (\texttt{<}, \texttt{>}, \texttt{\&}, \texttt{"}) are escaped in the XML output. One bug I hit early on was escaping \texttt{\&} \emph{after} \texttt{<}, which turned \texttt{\&lt;} into \texttt{\&amp;lt;}. The fix was to always escape \texttt{\&} first in the XML escape helper function.
 
 % ============================================================
 \section{Parser Design}
 % ============================================================
 
-The parser implements recursive descent following the Jack grammar from Figure 10.5 of the textbook. Each grammar non-terminal has a corresponding \texttt{compile\_*} method.
+The parser implements recursive descent following the Jack grammar from Figure 10.5 of the textbook. Each grammar non-terminal has a corresponding \texttt{parse\_*} method.
 
 \subsection{Token Navigation}
 
 The parser maintains a position index into the flat token list. Three helpers drive the parsing:
 
 \begin{itemize}
-    \item \texttt{\_eat(type, value)}: Consumes the current token, writes it to XML, asserts it matches the expected type/value, and advances. This is the workhorse --- almost every terminal in the grammar goes through \texttt{\_eat}.
-    \item \texttt{\_is\_token(type, value)}: Peeks at the current token without consuming. Used for lookahead decisions (e.g., is the next statement a \texttt{let} or a \texttt{while}?).
-    \item \texttt{\_peek\_token()}: Looks one token ahead. Only needed for the LL(2) case in \texttt{compile\_term}.
+    \item \texttt{\_require\_token(type, value)}: Consumes the current token, writes it to XML, asserts it matches the expected type/value, and advances. This is the workhorse --- almost every terminal in the grammar goes through \texttt{\_require\_token}.
+    \item \texttt{\_matches\_token(type, value)}: Peeks at the current token without consuming. Used for lookahead decisions (e.g., is the next statement a \texttt{let} or a \texttt{while}?).
+    \item \texttt{\_lookahead\_next\_token()}: Looks one token ahead. Only needed for the LL(2) case in \texttt{parse\_term}.
 \end{itemize}
 
-\subsection{The LL(2) Problem in \texttt{compileTerm}}
+\subsection{The LL(2) Problem in \texttt{parse\_term}}
 
 The Jack grammar is LL(1) everywhere except when parsing a term that starts with an identifier. At that point, the current token alone doesn't tell you whether it's:
 \begin{itemize}
@@ -177,12 +177,12 @@ The solution is to peek one token ahead. If the next token is \texttt{[}, it's a
 
 Jack has no operator precedence --- evaluation is strictly left-to-right. This makes expression parsing straightforward:
 
-\begin{lstlisting}[style=pseudo, caption={Expression compilation (left-to-right)}]
-compileExpression:
-    compileTerm
+\begin{lstlisting}[style=pseudo, caption={Expression parsing (left-to-right)}]
+parse_expression:
+    parse_term
     while currentToken is an op:
-        eat(op)
-        compileTerm
+        require_token(op)
+        parse_term
         emit(op)   // postfix: operands first, then operator
 \end{lstlisting}
 
@@ -203,7 +203,7 @@ When looking up a variable, the compiler first checks the subroutine-level table
 
 \subsection{Symbol Table State in \texttt{Conv.conv2d()}}
 
-At the point where the inner-loop accumulator is assigned (\texttt{let sum = sum + ...}), the symbol tables look like this:
+At the point where the inner-loop accumulator is assigned (\texttt{let cellVal = cellVal + ...}), the symbol tables look like this:
 
 \begin{table}[h!]
 \centering
@@ -212,11 +212,11 @@ At the point where the inner-loop accumulator is assigned (\texttt{let sum = sum
 \toprule
 \textbf{Name} & \textbf{Type} & \textbf{Kind} & \textbf{Index} \\
 \midrule
-ArrayFilter & Array & static & 0 \\
-stride & int & static & 1 \\
-ArrayInput & Array & this & 0 \\
-ArrayOutput & Array & this & 1 \\
-ArraySize & int & this & 2 \\
+kernelMatrix & Array & static & 0 \\
+strideStep & int & static & 1 \\
+inputTensor & Array & this & 0 \\
+outputTensor & Array & this & 1 \\
+inputSize & int & this & 2 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -229,20 +229,20 @@ ArraySize & int & this & 2 \\
 \textbf{Name} & \textbf{Type} & \textbf{Kind} & \textbf{Index} \\
 \midrule
 this & Conv & argument & 0 \\
-outDim & int & local & 0 \\
-outRow & int & local & 1 \\
-outCol & int & local & 2 \\
-inRow & int & local & 3 \\
-inCol & int & local & 4 \\
-fr & int & local & 5 \\
-fc & int & local & 6 \\
-sum & int & local & 7 \\
-k & int & local & 8 \\
+dimOut & int & local & 0 \\
+rOut & int & local & 1 \\
+cOut & int & local & 2 \\
+rIn & int & local & 3 \\
+cIn & int & local & 4 \\
+rF & int & local & 5 \\
+cF & int & local & 6 \\
+cellVal & int & local & 7 \\
+outIdx & int & local & 8 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-So \texttt{sum} resolves to \texttt{local 7}, \texttt{ArrayInput} to \texttt{this 0}, \texttt{ArraySize} to \texttt{this 2}, \texttt{ArrayFilter} to \texttt{static 0}, and \texttt{stride} to \texttt{static 1}. The implicit \texttt{this} at argument 0 is pushed and popped into \texttt{pointer 0} at the start of the method.
+So \texttt{cellVal} resolves to \texttt{local 7}, \texttt{inputTensor} to \texttt{this 0}, \texttt{inputSize} to \texttt{this 2}, \texttt{kernelMatrix} to \texttt{static 0}, and \texttt{strideStep} to \texttt{static 1}. The implicit \texttt{this} at argument 0 is pushed and popped into \texttt{pointer 0} at the start of the method.
 
 % ============================================================
 \section{VM Code Generation}
@@ -257,7 +257,7 @@ When compiling a constructor, the engine:
     \item Pops the returned base address into \texttt{pointer 0}, setting up \texttt{THIS}.
 \end{enumerate}
 
-For \texttt{Conv.new}, this allocates 3 words (for \texttt{ArrayInput}, \texttt{ArrayOutput}, \texttt{ArraySize}).
+For \texttt{Conv.new}, this allocates 3 words (for \texttt{inputTensor}, \texttt{outputTensor}, \texttt{inputSize}).
 
 \subsection{Methods}
 
@@ -270,7 +270,7 @@ pop pointer 0     // THIS = the object we're operating on
 
 This means \texttt{this 0}, \texttt{this 1}, etc. now refer to the object's fields. All subsequent field accesses go through the \texttt{this} segment.
 
-When \emph{calling} a method (e.g., \texttt{conv.initFilter(filter)}), the compiler pushes the object reference as the first argument before the explicit arguments, and increments the argument count by 1.
+When \emph{calling} a method (e.g., \texttt{convolutionEngine.initFilter(filterKernel)}), the compiler pushes the object reference as the first argument before the explicit arguments, and increments the argument count by 1.
 
 \subsection{Array Access}
 
@@ -297,22 +297,22 @@ push temp 0        // restore expr value
 pop that 0         // *(arr+i) = expr
 \end{lstlisting}
 
-\subsection{Compilation Correctness: Tracing \texttt{let ArrayOutput[k] = sum}}
+\subsection{Compilation Correctness: Tracing \texttt{let outputTensor[outIdx] = cellVal}}
 
-For the 5$\times$5 test case, consider the first output assignment where $k = 0$ and $sum = 7$. The emitted VM code is:
+For the 5$\times$5 test case, consider the first output assignment where $outIdx = 0$ and $cellVal = 7$. The emitted VM code is:
 
-\begin{lstlisting}[style=hackvm, caption={VM trace for let ArrayOutput[k] = sum}]
-push this 1       // ArrayOutput base address (say, addr 2050)
-push local 8      // k = 0
+\begin{lstlisting}[style=hackvm, caption={VM trace for let outputTensor[outIdx] = cellVal}]
+push this 1       // outputTensor base address (say, addr 2050)
+push local 8      // outIdx = 0
 add               // 2050 + 0 = 2050
-push local 7      // sum = 7
+push local 7      // cellVal = 7
 pop temp 0        // temp 0 = 7
 pop pointer 1     // THAT = 2050
 push temp 0       // push 7
 pop that 0        // RAM[2050] = 7
 \end{lstlisting}
 
-So \texttt{THAT} is set to the base address of \texttt{ArrayOutput} plus offset $k$, and the computed sum is stored there via \texttt{that 0}. This correctly writes 7 to the first element of the output array.
+So \texttt{THAT} is set to the base address of \texttt{outputTensor} plus offset $outIdx$, and the computed cellVal is stored there via \texttt{that 0}. This correctly writes 7 to the first element of the output array.
 
 \subsection{Control Flow}
 
@@ -353,7 +353,7 @@ Labels are generated with a global counter to ensure uniqueness across the entir
     \item \textbf{Stride}: Set to 1 in the constructor. This gives a 3$\times$3 output for a 5$\times$5 input with $F = 3$.
     \item \textbf{Filter}: A Laplacian-like edge detector \texttt{[0, -1, 0, -1, 5, -1, 0, -1, 0]}. This highlights each pixel relative to its 4-connected neighbours. It's a standard choice in image processing and produces non-trivial output values that are easy to verify manually.
     \item \textbf{Flattened arrays}: Both input and output matrices are stored as 1D arrays in row-major order. Element $(r, c)$ of an $N \times N$ matrix is at index $r \cdot N + c$.
-    \item \textbf{Static vs. field}: The filter and stride are \texttt{static} (shared across all Conv instances), while the input/output arrays and size are \texttt{field} (per-instance).
+    \item \textbf{Static vs. field}: The filter kernel (\texttt{kernelMatrix}) and stride step (\texttt{strideStep}) are \texttt{static} (shared across all Conv instances), while the input/output tensors (\texttt{inputTensor}, \texttt{outputTensor}) and size (\texttt{inputSize}) are \texttt{field} (per-instance).
 \end{itemize}
 
 \subsection{Output Dimension Formula}
@@ -384,7 +384,7 @@ For $S = 1$ with a 9$\times$9 input, the output is $7 \times 7 = 49$ elements. F
 Testing followed a bottom-up approach:
 
 \begin{enumerate}
-    \item \textbf{Tokenizer}: Compiled \texttt{Conv.jack} and checked that \texttt{ConvT.xml} had the right number of tokens (646) and that all comments were stripped. Verified XML escaping of \texttt{<}, \texttt{>}, \texttt{\&} symbols.
+    \item \textbf{Tokenizer}: Compiled \texttt{Conv.jack} and checked that \texttt{ConvT.xml} had the right tokens and that all comments were stripped. Verified XML escaping of \texttt{<}, \texttt{>}, \texttt{\&} symbols.
     \item \textbf{Parser}: Inspected \texttt{Conv.xml} to verify correct nesting of all non-terminals. Checked that every \texttt{<statements>} block had matching open/close tags and that expressions were parsed with correct structure.
     \item \textbf{VM Code}: Manually traced the VM output for small cases. For the constructor, verified that \texttt{Memory.alloc} was called with the right field count (3). For methods, verified \texttt{argument 0} was popped into \texttt{pointer 0}. For array accesses, verified the \texttt{pointer 1}/\texttt{that 0} pattern.
     \item \textbf{Numerical Verification}: Wrote a Python script to compute the expected convolution output independently. For the 5$\times$5 input with the Laplacian filter, the expected output is \texttt{[7, 8, 9, 12, 13, 14, 17, 18, 19]}.
@@ -414,7 +414,7 @@ text = text.replace('>', '&gt;')
 
 \subsection{Method Argument Count}
 
-An early version of the compiler was generating wrong argument counts for method calls. When you write \texttt{conv.initFilter(filter)}, the compiler needs to push the object reference as argument 0 and then the explicit arguments. So the call becomes \texttt{call Conv.initFilter 2} (not 1). I initially forgot to add 1 to the argument count for method calls, which caused the callee to read the wrong values from its argument segment. The symptom was that every method was reading garbage from its first argument --- it took a while to figure out because the error manifested several call levels deep.
+An early version of the compiler was generating wrong argument counts for method calls. When you write \texttt{convolutionEngine.initFilter(filterKernel)}, the compiler needs to push the object reference as argument 0 and then the explicit arguments. So the call becomes \texttt{call Conv.initFilter 2} (not 1). I initially forgot to add 1 to the argument count for method calls, which caused the callee to read the wrong values from its argument segment. The symptom was that every method was reading garbage from its first argument --- it took a while to figure out because the error manifested several call levels deep.
 
 \subsection{Array Write Safety}
 

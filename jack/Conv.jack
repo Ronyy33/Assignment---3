@@ -1,131 +1,169 @@
+/**
+ * Conv.jack - Performs a 2D convolution operation on a flattened matrix
+ * using a 3x3 kernel/filter with a configurable stride length.
+ */
 class Conv {
-    static Array ArrayFilter;
-    static int stride;
+    /* Static variables shared across instances */
+    static Array kernelMatrix;     // Flattened 3x3 filter coefficients
+    static int strideStep;          // Number of elements to step by
 
-    field Array ArrayInput;
-    field Array ArrayOutput;
-    field int ArraySize;
+    /* Instance fields */
+    field Array inputTensor;        // Flattened source image/matrix (NxN)
+    field Array outputTensor;       // Flattened resulting matrix after convolving
+    field int inputSize;            // Dimensions of input matrix (N)
 
+    /**
+     * Instantiates a new Conv object.
+     * @param N The dimension size of the square input matrix
+     */
     constructor Conv new(int N) {
-        var int outDim;
-        var int outTotal;
+        var int dimOutput;
+        var int lenOutput;
 
-        let ArraySize = N;
-        let stride = 1;
-        let ArrayInput = Array.new(N * N);
-        let outDim = ((N - 3) / stride) + 1;
+        let inputSize = N;
+        let strideStep = 1;
+        let inputTensor = Array.new(N * N);
+        let dimOutput = ((N - 3) / strideStep) + 1;
 
-        if (outDim < 1) {
-            do Memory.poke(0, -1);
-            let outTotal = 1;
+        /* Verify boundary condition for output dimension */
+        if (~(dimOutput < 1)) {
+            let lenOutput = dimOutput * dimOutput;
         } else {
-            let outTotal = outDim * outDim;
+            do Memory.poke(0, -1);
+            let lenOutput = 1;
         }
 
-        let ArrayOutput = Array.new(outTotal);
+        let outputTensor = Array.new(lenOutput);
 
-        if (ArrayFilter = null) {
-            let ArrayFilter = Array.new(9);
+        /* Ensure filter kernel is allocated once */
+        if (kernelMatrix = null) {
+            let kernelMatrix = Array.new(9);
         }
 
         return this;
     }
 
-    method void initFilter(Array values) {
-        var int i;
-        let i = 0;
-        while (i < 9) {
-            let ArrayFilter[i] = values[i];
-            let i = i + 1;
+    /**
+     * Initializes the static 3x3 filter kernel with source values.
+     * @param filterVals The flat array containing 9 values
+     */
+    method void initFilter(Array filterVals) {
+        var int idx;
+        let idx = 0;
+        while (~(idx > 8)) {
+            let kernelMatrix[idx] = filterVals[idx];
+            let idx = idx + 1;
         }
         return;
     }
 
-    method void getArrayInput(Array input, int size) {
-        var int i;
-        var int total;
+    /**
+     * Populates the instance input tensor from a source array.
+     * @param srcData The source array containing values
+     * @param sideLen The side dimension of the source matrix
+     */
+    method void getArrayInput(Array srcData, int sideLen) {
+        var int offset;
+        var int elementsCount;
 
-        let ArraySize = size;
-        let total = size * size;
-        let i = 0;
-        while (i < total) {
-            let ArrayInput[i] = input[i];
-            let i = i + 1;
+        let inputSize = sideLen;
+        let elementsCount = sideLen * sideLen;
+        let offset = 0;
+        while (offset < elementsCount) {
+            let inputTensor[offset] = srcData[offset];
+            let offset = offset + 1;
         }
         return;
     }
 
+    /**
+     * Computes the dimension length of the output matrix.
+     * @return The side size of the convoluted output matrix
+     */
     method int calcOutputDim() {
-        return ((ArraySize - 3) / stride) + 1;
+        var int resultDim;
+        let resultDim = ((inputSize - 3) / strideStep) + 1;
+        return resultDim;
     }
 
+    /**
+     * Runs the 2D spatial convolution operation.
+     * Computes multiply-accumulate values over each local 3x3 window.
+     */
     method void conv2d() {
-        var int outDim;
-        var int outRow, outCol;
-        var int inRow, inCol;
-        var int fr, fc;
-        var int sum;
-        var int k;
+        var int dimOut;
+        var int rOut, cOut;
+        var int rIn, cIn;
+        var int rF, cF;
+        var int cellVal;
+        var int outIdx;
 
-        let outDim = calcOutputDim();
+        let dimOut = calcOutputDim();
 
-        if (outDim < 1) {
+        /* Guard check: make sure convolution window fits */
+        if (~(dimOut > 0)) {
             do Memory.poke(0, -1);
             return;
         }
 
-        let k = 0;
-        let outRow = 0;
-        while (outRow < outDim) {
-            let outCol = 0;
-            while (outCol < outDim) {
-                let sum = 0;
-                let fr = 0;
-                while (fr < 3) {
-                    let fc = 0;
-                    while (fc < 3) {
-                        let inRow = (outRow * stride) + fr;
-                        let inCol = (outCol * stride) + fc;
-                        let sum = sum + (ArrayInput[(inRow * ArraySize) + inCol] * ArrayFilter[(fr * 3) + fc]);
-                        let fc = fc + 1;
+        let outIdx = 0;
+        let rOut = 0;
+        while (rOut < dimOut) {
+            let cOut = 0;
+            while (cOut < dimOut) {
+                let cellVal = 0;
+                let rF = 0;
+                while (rF < 3) {
+                    let cF = 0;
+                    while (cF < 3) {
+                        let rIn = (rOut * strideStep) + rF;
+                        let cIn = (cOut * strideStep) + cF;
+                        let cellVal = cellVal + (inputTensor[(rIn * inputSize) + cIn] * kernelMatrix[(rF * 3) + cF]);
+                        let cF = cF + 1;
                     }
-                    let fr = fr + 1;
+                    let rF = rF + 1;
                 }
-                let ArrayOutput[k] = sum;
-                let k = k + 1;
-                let outCol = outCol + 1;
+                let outputTensor[outIdx] = cellVal;
+                let outIdx = outIdx + 1;
+                let cOut = cOut + 1;
             }
-            let outRow = outRow + 1;
+            let rOut = rOut + 1;
         }
         return;
     }
 
+    /**
+     * Prints the output convoluted matrix to stdout in grid format.
+     */
     method void printOutput() {
-        var int outDim;
-        var int i, j, k;
+        var int limit;
+        var int y, x, pos;
 
-        let outDim = calcOutputDim();
-        let k = 0;
-        let i = 0;
-        while (i < outDim) {
-            let j = 0;
-            while (j < outDim) {
-                do Output.printInt(ArrayOutput[k]);
-                if (j < (outDim - 1)) {
-                    do Output.printChar(32);
+        let limit = calcOutputDim();
+        let pos = 0;
+        let y = 0;
+        while (y < limit) {
+            let x = 0;
+            while (x < limit) {
+                do Output.printInt(outputTensor[pos]);
+                if (~(x = (limit - 1))) {
+                    do Output.printChar(32); // print whitespace separator
                 }
-                let k = k + 1;
-                let j = j + 1;
+                let pos = pos + 1;
+                let x = x + 1;
             }
             do Output.println();
-            let i = i + 1;
+            let y = y + 1;
         }
         return;
     }
 
+    /**
+     * Releases memory allocations held by the instance.
+     */
     method void dispose() {
-        do ArrayInput.dispose();
-        do ArrayOutput.dispose();
+        do inputTensor.dispose();
+        do outputTensor.dispose();
         do Memory.deAlloc(this);
         return;
     }

@@ -23,19 +23,20 @@ push local 0
 push constant 1
 lt
 not
+not
 if-goto IF_FALSE0
+push local 0
+push local 0
+call Math.multiply 2
+pop local 1
+goto IF_END1
+label IF_FALSE0
 push constant 0
 push constant 1
 neg
 call Memory.poke 2
 pop temp 0
 push constant 1
-pop local 1
-goto IF_END1
-label IF_FALSE0
-push local 0
-push local 0
-call Math.multiply 2
 pop local 1
 label IF_END1
 push local 1
@@ -59,8 +60,9 @@ push constant 0
 pop local 0
 label WHILE_EXP4
 push local 0
-push constant 9
-lt
+push constant 8
+gt
+not
 not
 if-goto WHILE_END5
 push static 0
@@ -120,7 +122,7 @@ goto WHILE_EXP6
 label WHILE_END7
 push constant 0
 return
-function Conv.calcOutputDim 0
+function Conv.calcOutputDim 1
 push argument 0
 pop pointer 0
 push this 2
@@ -130,6 +132,8 @@ push static 1
 call Math.divide 2
 push constant 1
 add
+pop local 0
+push local 0
 return
 function Conv.conv2d 9
 push argument 0
@@ -138,8 +142,9 @@ push pointer 0
 call Conv.calcOutputDim 1
 pop local 0
 push local 0
-push constant 1
-lt
+push constant 0
+gt
+not
 not
 if-goto IF_FALSE8
 push constant 0
@@ -293,7 +298,8 @@ push local 2
 push local 0
 push constant 1
 sub
-lt
+eq
+not
 not
 if-goto IF_FALSE22
 push constant 32

@@ -1,150 +1,167 @@
+"""
+JackTokenizer - Performs lexical analysis on a Jack source file,
+stripping comments and extracting semantic tokens into an XML tree structure.
+"""
+
 import re
 import os
 
-# Jack language keywords
-KEYWORDS = {
+JACK_LANGUAGE_KEYWORDS = {
     'class', 'constructor', 'function', 'method', 'field', 'static',
     'var', 'int', 'char', 'boolean', 'void', 'true', 'false', 'null',
     'this', 'let', 'do', 'if', 'else', 'while', 'return'
 }
 
-# Jack language symbols
-SYMBOLS = {'{', '}', '(', ')', '[', ']', '.', ',', ';',
-           '+', '-', '*', '/', '&', '|', '<', '>', '=', '~'}
-
-# XML escape map
-XML_ESCAPES = {
-    '<': '&lt;',
-    '>': '&gt;',
-    '&': '&amp;',
-    '"': '&quot;',
+JACK_LANGUAGE_SYMBOLS = {
+    '{', '}', '(', ')', '[', ']', '.', ',', ';',
+    '+', '-', '*', '/', '&', '|', '<', '>', '=', '~'
 }
 
 
-def xml_escape(text):
-    text = text.replace('&', '&amp;')
-    text = text.replace('<', '&lt;')
-    text = text.replace('>', '&gt;')
-    text = text.replace('"', '&quot;')
-    return text
+def sanitize_xml_chars(raw_text):
+    """
+    Escapes special characters in text to make it XML safe.
+    """
+    escaped_text = raw_text.replace('&', '&amp;')
+    escaped_text = escaped_text.replace('<', '&lt;')
+    escaped_text = escaped_text.replace('>', '&gt;')
+    escaped_text = escaped_text.replace('"', '&quot;')
+    return escaped_text
 
 
-class JackTokenizer:
-    def __init__(self, filepath):
-        self.filepath = filepath
-        self.basename = os.path.splitext(os.path.basename(filepath))[0]
-        self.dirpath = os.path.dirname(filepath)
-        with open(filepath, 'r') as f:
-            self.source = f.read()
+class JackLexicalLexer:
+    """
+    Class responsible for loading a .jack file, removing comments/whitespaces,
+    and classifying individual lexical tokens.
+    """
+    def __init__(self, target_filepath):
+        self._source_file_path = target_filepath
+        self._source_base_name = os.path.splitext(os.path.basename(target_filepath))[0]
+        self._source_dir_path = os.path.dirname(target_filepath)
+        
+        with open(target_filepath, 'r') as file_handle:
+            self._raw_source_content = file_handle.read()
 
-    def _strip_comments(self, source):
-        result = []
-        i = 0
-        n = len(source)
-        in_string = False
+    def _remove_code_comments(self, content_str):
+        """
+        Strips inline and multiline block comments while preserving string literals.
+        """
+        output_buffer = []
+        char_idx = 0
+        total_len = len(content_str)
+        inside_string_lit = False
 
-        while i < n:
-            # String literals
-            if source[i] == '"' and not in_string:
-                in_string = True
-                result.append(source[i])
-                i += 1
-            elif source[i] == '"' and in_string:
-                in_string = False
-                result.append(source[i])
-                i += 1
-            elif in_string:
-                result.append(source[i])
-                i += 1
-            # Block comment: /* ... */ or /** ... */
-            elif i + 1 < n and source[i] == '/' and source[i + 1] == '*':
-                i += 2
-                while i + 1 < n and not (source[i] == '*' and source[i + 1] == '/'):
-                    i += 1
-                i += 2  # skip past */
-            # Single-line comment: //
-            elif i + 1 < n and source[i] == '/' and source[i + 1] == '/':
-                i += 2
-                while i < n and source[i] != '\n':
-                    i += 1
+        while char_idx < total_len:
+            curr_char = content_str[char_idx]
+
+            # Detect double quotes bounding a string constant
+            if curr_char == '"':
+                inside_string_lit = not inside_string_lit
+                output_buffer.append(curr_char)
+                char_idx += 1
+            elif inside_string_lit:
+                output_buffer.append(curr_char)
+                char_idx += 1
+            # Check for block comments: /* or /**
+            elif char_idx + 1 < total_len and curr_char == '/' and content_str[char_idx + 1] == '*':
+                char_idx += 2
+                while char_idx + 1 < total_len and not (content_str[char_idx] == '*' and content_str[char_idx + 1] == '/'):
+                    char_idx += 1
+                char_idx += 2  # skip closing */
+            # Check for line comments: //
+            elif char_idx + 1 < total_len and curr_char == '/' and content_str[char_idx + 1] == '/':
+                char_idx += 2
+                while char_idx < total_len and content_str[char_idx] != '\n':
+                    char_idx += 1
             else:
-                result.append(source[i])
-                i += 1
+                output_buffer.append(curr_char)
+                char_idx += 1
 
-        return ''.join(result)
+        return ''.join(output_buffer)
 
-    def _tokenize_source(self, clean_source):
-        tokens = []
-        i = 0
-        n = len(clean_source)
+    def _extract_tokens(self, cleaned_content):
+        """
+        Iterates over the cleaned source string to build classified token pairs.
+        """
+        token_list = []
+        char_idx = 0
+        total_len = len(cleaned_content)
 
-        while i < n:
-            c = clean_source[i]
+        while char_idx < total_len:
+            curr_char = cleaned_content[char_idx]
 
-            # Skip whitespace
-            if c in ' \t\n\r':
-                i += 1
+            # Skip standard formatting/whitespace characters
+            if curr_char in ' \t\n\r':
+                char_idx += 1
                 continue
 
-            # Symbol
-            if c in SYMBOLS:
-                tokens.append(('symbol', c))
-                i += 1
+            # Check if it is a structural symbol
+            if curr_char in JACK_LANGUAGE_SYMBOLS:
+                token_list.append(('symbol', curr_char))
+                char_idx += 1
                 continue
 
-            # Integer constant
-            if c.isdigit():
-                j = i
-                while j < n and clean_source[j].isdigit():
-                    j += 1
-                tokens.append(('integerConstant', clean_source[i:j]))
-                i = j
+            # Check if it is a numeric digit
+            if curr_char.isdigit():
+                scan_idx = char_idx
+                while scan_idx < total_len and cleaned_content[scan_idx].isdigit():
+                    scan_idx += 1
+                token_list.append(('integerConstant', cleaned_content[char_idx:scan_idx]))
+                char_idx = scan_idx
                 continue
 
-            # String constant
-            if c == '"':
-                j = i + 1
-                while j < n and clean_source[j] != '"':
-                    j += 1
-                tokens.append(('stringConstant', clean_source[i + 1:j]))
-                i = j + 1  # skip closing quote
+            # Check if it is a string constant literal
+            if curr_char == '"':
+                scan_idx = char_idx + 1
+                while scan_idx < total_len and cleaned_content[scan_idx] != '"':
+                    scan_idx += 1
+                token_list.append(('stringConstant', cleaned_content[char_idx + 1:scan_idx]))
+                char_idx = scan_idx + 1
                 continue
 
-            # Keyword or identifier
-            if c.isalpha() or c == '_':
-                j = i
-                while j < n and (clean_source[j].isalnum() or clean_source[j] == '_'):
-                    j += 1
-                word = clean_source[i:j]
-                if word in KEYWORDS:
-                    tokens.append(('keyword', word))
+            # Check if it is a keyword or general word identifier
+            if curr_char.isalpha() or curr_char == '_':
+                scan_idx = char_idx
+                while scan_idx < total_len and (cleaned_content[scan_idx].isalnum() or cleaned_content[scan_idx] == '_'):
+                    scan_idx += 1
+                word_token = cleaned_content[char_idx:scan_idx]
+                
+                if word_token in JACK_LANGUAGE_KEYWORDS:
+                    token_list.append(('keyword', word_token))
                 else:
-                    tokens.append(('identifier', word))
-                i = j
+                    token_list.append(('identifier', word_token))
+                char_idx = scan_idx
                 continue
 
-            # Unknown character - skip
-            i += 1
+            # Advance past unhandled/invalid chars
+            char_idx += 1
 
-        return tokens
+        return token_list
 
-    def tokenize(self, out_dir=None):
-        clean = self._strip_comments(self.source)
-        tokens = self._tokenize_source(clean)
+    def execute_tokenization(self, out_dir=None):
+        """
+        Orchestrates comment stripping, token extraction, and writing the XML token tree.
+        """
+        sanitized_code = self._remove_code_comments(self._raw_source_content)
+        parsed_tokens = self._extract_tokens(sanitized_code)
 
         if out_dir is None:
-            out_dir = self.dirpath
-        xml_path = os.path.join(out_dir, self.basename + 'T.xml')
-        self._write_xml(tokens, xml_path)
+            out_dir = self._source_dir_path
+            
+        xml_output_file = os.path.join(out_dir, self._source_base_name + 'T.xml')
+        self._export_xml_tokens(parsed_tokens, xml_output_file)
 
-        return tokens
+        return parsed_tokens
 
-    def _write_xml(self, tokens, xml_path):
-        lines = ['<tokens>']
-        for token_type, token_value in tokens:
-            escaped = xml_escape(token_value)
-            lines.append(f'<{token_type}> {escaped} </{token_type}>')
-        lines.append('</tokens>')
+    def _export_xml_tokens(self, tokens, output_xml_path):
+        """
+        Serializes the generated tokens into the required <tokens> XML file format.
+        """
+        xml_lines_buffer = ['<tokens>']
+        for type_tag, value_content in tokens:
+            escaped_val = sanitize_xml_chars(value_content)
+            xml_lines_buffer.append(f'<{type_tag}> {escaped_val} </{type_tag}>')
+        xml_lines_buffer.append('</tokens>')
 
-        with open(xml_path, 'w') as f:
-            f.write('\n'.join(lines) + '\n')
+        with open(output_xml_path, 'w') as xml_file:
+            xml_file.write('\n'.join(xml_lines_buffer) + '\n')

@@ -442,109 +442,15 @@ M=-1
 @SP
 A=M-1
 M=!M
+// not
+@SP
+A=M-1
+M=!M
 @SP
 AM=M-1
 D=M
 @Conv.new$IF_FALSE0
 D;JNE
-// push constant 0
-@0
-D=A
-@SP
-A=M
-M=D
-@SP
-M=M+1
-// push constant 1
-@1
-D=A
-@SP
-A=M
-M=D
-@SP
-M=M+1
-// neg
-@SP
-A=M-1
-M=-M
-@Memory.poke$ret.7
-D=A
-@SP
-A=M
-M=D
-@SP
-M=M+1
-@LCL
-D=M
-@SP
-A=M
-M=D
-@SP
-M=M+1
-@ARG
-D=M
-@SP
-A=M
-M=D
-@SP
-M=M+1
-@THIS
-D=M
-@SP
-A=M
-M=D
-@SP
-M=M+1
-@THAT
-D=M
-@SP
-A=M
-M=D
-@SP
-M=M+1
-@SP
-D=M
-@7
-D=D-A
-@ARG
-M=D
-@SP
-D=M
-@LCL
-M=D
-@Memory.poke
-0;JMP
-(Memory.poke$ret.7)
-// pop temp 0
-@SP
-AM=M-1
-D=M
-@5
-M=D
-// push constant 1
-@1
-D=A
-@SP
-A=M
-M=D
-@SP
-M=M+1
-// pop local 1
-@1
-D=A
-@LCL
-D=D+M
-@R13
-M=D
-@SP
-AM=M-1
-D=M
-@R13
-A=M
-M=D
-@Conv.new$IF_END1
-0;JMP
-(Conv.new$IF_FALSE0)
 // push local 0
 @0
 D=A
@@ -567,7 +473,7 @@ A=M
 M=D
 @SP
 M=M+1
-@Math.multiply$ret.8
+@Math.multiply$ret.7
 D=A
 @SP
 A=M
@@ -614,7 +520,105 @@ D=M
 M=D
 @Math.multiply
 0;JMP
-(Math.multiply$ret.8)
+(Math.multiply$ret.7)
+// pop local 1
+@1
+D=A
+@LCL
+D=D+M
+@R13
+M=D
+@SP
+AM=M-1
+D=M
+@R13
+A=M
+M=D
+@Conv.new$IF_END1
+0;JMP
+(Conv.new$IF_FALSE0)
+// push constant 0
+@0
+D=A
+@SP
+A=M
+M=D
+@SP
+M=M+1
+// push constant 1
+@1
+D=A
+@SP
+A=M
+M=D
+@SP
+M=M+1
+// neg
+@SP
+A=M-1
+M=-M
+@Memory.poke$ret.8
+D=A
+@SP
+A=M
+M=D
+@SP
+M=M+1
+@LCL
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
+@ARG
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
+@THIS
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
+@THAT
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
+@SP
+D=M
+@7
+D=D-A
+@ARG
+M=D
+@SP
+D=M
+@LCL
+M=D
+@Memory.poke
+0;JMP
+(Memory.poke$ret.8)
+// pop temp 0
+@SP
+AM=M-1
+D=M
+@5
+M=D
+// push constant 1
+@1
+D=A
+@SP
+A=M
+M=D
+@SP
+M=M+1
 // pop local 1
 @1
 D=A
@@ -921,32 +925,36 @@ A=M
 M=D
 @SP
 M=M+1
-// push constant 9
-@9
+// push constant 8
+@8
 D=A
 @SP
 A=M
 M=D
 @SP
 M=M+1
-// lt
+// gt
 @SP
 AM=M-1
 D=M
 A=A-1
 D=M-D
-@IF_LT.13
-D;JLT
+@IF_GT.13
+D;JGT
 @SP
 A=M-1
 M=0
-@END_LT.14
+@END_GT.14
 0;JMP
-(IF_LT.13)
+(IF_GT.13)
 @SP
 A=M-1
 M=-1
-(END_LT.14)
+(END_GT.14)
+// not
+@SP
+A=M-1
+M=!M
 // not
 @SP
 A=M-1
@@ -1570,6 +1578,11 @@ M=D
 A=M
 0;JMP
 (Conv.calcOutputDim)
+@SP
+A=M
+M=0
+@SP
+M=M+1
 // push argument 0
 @0
 D=A
@@ -1682,6 +1695,30 @@ AM=M-1
 D=M
 A=A-1
 M=D+M
+// pop local 0
+@0
+D=A
+@LCL
+D=D+M
+@R13
+M=D
+@SP
+AM=M-1
+D=M
+@R13
+A=M
+M=D
+// push local 0
+@0
+D=A
+@LCL
+A=D+M
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
 @LCL
 D=M
 @R14
@@ -1875,32 +1912,36 @@ A=M
 M=D
 @SP
 M=M+1
-// push constant 1
-@1
+// push constant 0
+@0
 D=A
 @SP
 A=M
 M=D
 @SP
 M=M+1
-// lt
+// gt
 @SP
 AM=M-1
 D=M
 A=A-1
 D=M-D
-@IF_LT.20
-D;JLT
+@IF_GT.20
+D;JGT
 @SP
 A=M-1
 M=0
-@END_LT.21
+@END_GT.21
 0;JMP
-(IF_LT.20)
+(IF_GT.20)
 @SP
 A=M-1
 M=-1
-(END_LT.21)
+(END_GT.21)
+// not
+@SP
+A=M-1
+M=!M
 // not
 @SP
 A=M-1
@@ -3608,24 +3649,28 @@ AM=M-1
 D=M
 A=A-1
 M=M-D
-// lt
+// eq
 @SP
 AM=M-1
 D=M
 A=A-1
 D=M-D
-@IF_LT.42
-D;JLT
+@IF_EQ.42
+D;JEQ
 @SP
 A=M-1
 M=0
-@END_LT.43
+@END_EQ.43
 0;JMP
-(IF_LT.42)
+(IF_EQ.42)
 @SP
 A=M-1
 M=-1
-(END_LT.43)
+(END_EQ.43)
+// not
+@SP
+A=M-1
+M=!M
 // not
 @SP
 A=M-1
@@ -4329,24 +4374,28 @@ A=M
 M=D
 @SP
 M=M+1
-// lt
+// eq
 @SP
 AM=M-1
 D=M
 A=A-1
 D=M-D
-@IF_LT.50
-D;JLT
+@IF_EQ.50
+D;JEQ
 @SP
 A=M-1
 M=0
-@END_LT.51
+@END_EQ.51
 0;JMP
-(IF_LT.50)
+(IF_EQ.50)
 @SP
 A=M-1
 M=-1
-(END_LT.51)
+(END_EQ.51)
+// not
+@SP
+A=M-1
+M=!M
 // not
 @SP
 A=M-1

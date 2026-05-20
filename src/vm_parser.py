@@ -1,58 +1,72 @@
-# Command Types
-C_ARITHMETIC = "C_ARITHMETIC"
-C_PUSH       = "C_PUSH"
-C_POP        = "C_POP"
-C_LABEL      = "C_LABEL"
-C_GOTO       = "C_GOTO"
-C_IF         = "C_IF"
-C_FUNCTION   = "C_FUNCTION"
-C_RETURN     = "C_RETURN"
-C_CALL       = "C_CALL"
+"""
+vm_parser - Parses single .vm files, breaking each line into clean list of tokens
+and identifying VM instruction types and arguments.
+"""
 
-class Parser:
-    def __init__(self, filepath):
-        self.commands = []
-        self.current_index = -1
-        self.current_command = []
+# Unique constants representing VM command types
+CMD_ARITHMETIC = "CMD_ARITHMETIC"
+CMD_PUSH       = "CMD_PUSH"
+CMD_POP        = "CMD_POP"
+CMD_LABEL      = "CMD_LABEL"
+CMD_GOTO       = "CMD_GOTO"
+CMD_IF         = "CMD_IF"
+CMD_FUNCTION   = "CMD_FUNCTION"
+CMD_RETURN     = "CMD_RETURN"
+CMD_CALL       = "CMD_CALL"
 
-        # Read and clean lines
-        with open(filepath, 'r') as f:
-            for line in f:
-                # Remove comments
-                clean_line = line.split('//')[0].strip()
-                if clean_line:
-                    self.commands.append(clean_line.split())
 
-    def has_more_commands(self):
-        return (self.current_index + 1) < len(self.commands)
+class InstructionReader:
+    """
+    Parses a single virtual machine VM instruction source file.
+    """
+    def __init__(self, vm_file_path):
+        self._instructions_list = []
+        self._cursor_index = -1
+        self._active_instruction = []
 
-    def advance(self):
-        self.current_index += 1
-        self.current_command = self.commands[self.current_index]
+        # Read and sanitize commands
+        with open(vm_file_path, 'r') as file_obj:
+            for source_line in file_obj:
+                # Strip comments beginning with //
+                sanitized_line = source_line.split('//')[0].strip()
+                if sanitized_line:
+                    self._instructions_list.append(sanitized_line.split())
 
-    def command_type(self):
-        cmd = self.current_command[0]
+    def has_remaining_commands(self):
+        """Checks if there are more instructions left to parse."""
+        return (self._cursor_index + 1) < len(self._instructions_list)
+
+    def next_command(self):
+        """Advances cursor to the next instruction in sequence."""
+        self._cursor_index += 1
+        self._active_instruction = self._instructions_list[self._cursor_index]
+
+    def get_command_type(self):
+        """Determines the specific command type category of the active instruction."""
+        base_cmd = self._active_instruction[0]
         
-        arithmetic_cmds = ["add", "sub", "neg", "eq", "gt", "lt", "and", "or", "not"]
-        if cmd in arithmetic_cmds:
-            return C_ARITHMETIC
+        # Arithmetic set checks
+        if base_cmd in ("add", "sub", "neg", "eq", "gt", "lt", "and", "or", "not"):
+            return CMD_ARITHMETIC
         
-        types = {
-            "push":     C_PUSH,
-            "pop":      C_POP,
-            "label":    C_LABEL,
-            "goto":     C_GOTO,
-            "if-goto":  C_IF,
-            "function": C_FUNCTION,
-            "call":     C_CALL,
-            "return":   C_RETURN
+        command_mappings = {
+            "push":     CMD_PUSH,
+            "pop":      CMD_POP,
+            "label":    CMD_LABEL,
+            "goto":     CMD_GOTO,
+            "if-goto":  CMD_IF,
+            "function": CMD_FUNCTION,
+            "call":     CMD_CALL,
+            "return":   CMD_RETURN
         }
-        return types.get(cmd)
+        return command_mappings.get(base_cmd)
 
-    def arg1(self):
-        if self.command_type() == C_ARITHMETIC:
-            return self.current_command[0]
-        return self.current_command[1]
+    def get_first_arg(self):
+        """Returns the first argument of the active command."""
+        if self.get_command_type() == CMD_ARITHMETIC:
+            return self._active_instruction[0]
+        return self._active_instruction[1]
 
-    def arg2(self):
-        return int(self.current_command[2])
+    def get_second_arg(self):
+        """Returns the second argument of the active command."""
+        return int(self._active_instruction[2])

@@ -1,9 +1,14 @@
-import os
-from SymbolTable import SymbolTable, STATIC, FIELD, ARG, VAR
-from VMWriter import VMWriter
+"""
+CompilationEngine - Analyzes tokens produced by JackLexicalLexer,
+validates syntax structure against the Jack grammar, builds an XML parse tree,
+and outputs target stack VM bytecode commands.
+"""
 
-# Operator
-OP_COMMANDS = {
+import os
+from SymbolTable import LexicalScopeTable, SCOPE_STATIC, SCOPE_FIELD, SCOPE_ARG, SCOPE_VAR
+from VMWriter import BytecodeWriter
+
+BINARY_MATH_COMMANDS = {
     '+': 'add',
     '-': 'sub',
     '=': 'eq',
@@ -13,566 +18,602 @@ OP_COMMANDS = {
     '|': 'or',
 }
 
-# Unary operator
-UNARY_OP_COMMANDS = {
+UNARY_MATH_COMMANDS = {
     '-': 'neg',
     '~': 'not',
 }
 
-# XML escape
-XML_ESCAPES = {
-    '<': '&lt;',
-    '>': '&gt;',
-    '&': '&amp;',
-    '"': '&quot;',
-}
+
+def escape_xml_entities(raw_str):
+    """
+    Translates reserved characters into safe XML entity references.
+    """
+    escaped = raw_str.replace('&', '&amp;')
+    escaped = escaped.replace('<', '&lt;')
+    escaped = escaped.replace('>', '&gt;')
+    escaped = escaped.replace('"', '&quot;')
+    return escaped
 
 
-def xml_escape(text):
-    text = text.replace('&', '&amp;')
-    text = text.replace('<', '&lt;')
-    text = text.replace('>', '&gt;')
-    text = text.replace('"', '&quot;')
-    return text
+class SyntaxAnalyzer:
+    """
+    Recursive-descent syntactic parser for the Jack language.
+    Generates syntax tree XML and corresponding VM bytecode.
+    """
 
+    def __init__(self, token_list, base_class_name, out_dir='.'):
+        self._tokens_stream = token_list
+        self._current_index = 0
+        self._current_class_name = base_class_name
+        self._output_dir_path = out_dir
 
-class CompilationEngine:
+        # XML parsing logs
+        self._xml_output_buffer = []
+        self._xml_indentation_level = 0
 
-    def __init__(self, tokens, class_name, out_dir='.'):
-        self.tokens = tokens
-        self.pos = 0
-        self.class_name = class_name
-        self.out_dir = out_dir
+        # Scope Table Manager
+        self._scope_table = LexicalScopeTable()
 
-        # XML output
-        self.xml_lines = []
-        self.xml_indent = 0
+        # Output Bytecode Writer
+        bytecode_file_path = os.path.join(out_dir, base_class_name + '.vm')
+        self._code_emitter = BytecodeWriter(bytecode_file_path)
 
-        # Symbol table
-        self.symbol_table = SymbolTable()
+        # Labels generator counter
+        self._generated_label_counter = 0
 
-        # VM writer
-        vm_path = os.path.join(out_dir, class_name + '.vm')
-        self.vm_writer = VMWriter(vm_path)
+        # Subroutine scopes trackers
+        self._current_subroutine_type = ''
+        self._current_subroutine_name = ''
 
-        # Label counter
-        self.label_counter = 0
+    def _get_active_token(self):
+        """Returns the current token without consuming it."""
+        if self._current_index < len(self._tokens_stream):
+            return self._tokens_stream[self._current_index]
+        return None, None
 
-        # Current subroutine type
-        self.current_subroutine_type = ''
-        self.current_subroutine_name = ''
+    def _lookahead_next_token(self):
+        """Peeks at the next token in the stream without advancing."""
+        if self._current_index + 1 < len(self._tokens_stream):
+            return self._tokens_stream[self._current_index + 1]
+        return None, None
 
-    def _current_token(self):
-        if self.pos < len(self.tokens):
-            return self.tokens[self.pos]
-        return (None, None)
-
-    def _peek_token(self):
-        if self.pos + 1 < len(self.tokens):
-            return self.tokens[self.pos + 1]
-        return (None, None)
-
-    def _advance(self):
-        token = self.tokens[self.pos]
-        self.pos += 1
+    def _consume_next(self):
+        """Advances past the current token and returns it."""
+        token = self._tokens_stream[self._current_index]
+        self._current_index += 1
         return token
 
-    def _eat(self, expected_type=None, expected_value=None):
-        token_type, token_value = self._current_token()
+    def _require_token(self, expected_type=None, expected_value=None):
+        """
+        Consumes the current token, enforcing type/value validation rules.
+        """
+        tok_type, tok_val = self._get_active_token()
 
-        if expected_type and token_type != expected_type:
+        if expected_type and tok_type != expected_type:
             raise SyntaxError(
-                f"Expected token type '{expected_type}' but got '{token_type}' "
-                f"(value='{token_value}') at position {self.pos}"
+                f"Validation Error: Expected '{expected_type}' but got '{tok_type}' "
+                f"(value='{tok_val}') at token index {self._current_index}"
             )
-        if expected_value and token_value != expected_value:
+        if expected_value:
             if isinstance(expected_value, (list, tuple, set)):
-                if token_value not in expected_value:
+                if tok_val not in expected_value:
                     raise SyntaxError(
-                        f"Expected one of {expected_value} but got '{token_value}' "
-                        f"at position {self.pos}"
+                        f"Validation Error: Expected value to be in {expected_value} "
+                        f"but got '{tok_val}' at index {self._current_index}"
                     )
-            else:
+            elif tok_val != expected_value:
                 raise SyntaxError(
-                    f"Expected '{expected_value}' but got '{token_value}' "
-                    f"at position {self.pos}"
+                    f"Validation Error: Expected value '{expected_value}' but got '{tok_val}' "
+                    f"at index {self._current_index}"
                 )
 
-        self._write_xml_terminal(token_type, token_value)
-        self.pos += 1
-        return token_type, token_value
+        self._append_terminal_xml(tok_type, tok_val)
+        self._current_index += 1
+        return tok_type, tok_val
 
-    def _is_token(self, token_type=None, token_value=None):
-        ct, cv = self._current_token()
-        if token_type and ct != token_type:
+    def _matches_token(self, expected_type=None, expected_value=None):
+        """
+        Checks if the current token matches the given type/value constraints.
+        """
+        tok_type, tok_val = self._get_active_token()
+        if expected_type and tok_type != expected_type:
             return False
-        if token_value:
-            if isinstance(token_value, (list, tuple, set)):
-                return cv in token_value
-            return cv == token_value
+        if expected_value:
+            if isinstance(expected_value, (list, tuple, set)):
+                return tok_val in expected_value
+            return tok_val == expected_value
         return True
 
-    def _write_xml_terminal(self, token_type, token_value):
-        indent = '  ' * self.xml_indent
-        escaped = xml_escape(token_value)
-        self.xml_lines.append(f'{indent}<{token_type}> {escaped} </{token_type}>')
+    def _append_terminal_xml(self, token_type, token_value):
+        """Formats and logs a terminal node to the XML structure."""
+        spacing = '  ' * self._xml_indentation_level
+        escaped_value = escape_xml_entities(token_value)
+        self._xml_output_buffer.append(f'{spacing}<{token_type}> {escaped_value} </{token_type}>')
 
-    def _xml_open(self, tag):
-        indent = '  ' * self.xml_indent
-        self.xml_lines.append(f'{indent}<{tag}>')
-        self.xml_indent += 1
+    def _open_xml_element(self, element_tag):
+        """Indents and logs a new non-terminal container element."""
+        spacing = '  ' * self._xml_indentation_level
+        self._xml_output_buffer.append(f'{spacing}<{element_tag}>')
+        self._xml_indentation_level += 1
 
-    def _xml_close(self, tag):
-        self.xml_indent -= 1
-        indent = '  ' * self.xml_indent
-        self.xml_lines.append(f'{indent}</{tag}>')
+    def _close_xml_element(self, element_tag):
+        """Outdents and closes a non-terminal container element."""
+        self._xml_indentation_level -= 1
+        spacing = '  ' * self._xml_indentation_level
+        self._xml_output_buffer.append(f'{spacing}</{element_tag}>')
 
-    def _save_xml(self):
-        xml_path = os.path.join(self.out_dir, self.class_name + '.xml')
-        with open(xml_path, 'w') as f:
-            f.write('\n'.join(self.xml_lines) + '\n')
+    def _write_xml_file(self):
+        """Saves the buffered XML parser representation to disk."""
+        target_path = os.path.join(self._output_dir_path, self._current_class_name + '.xml')
+        with open(target_path, 'w') as file_stream:
+            file_stream.write('\n'.join(self._xml_output_buffer) + '\n')
 
-    def _new_label(self, prefix):
-        label = f'{prefix}{self.label_counter}'
-        self.label_counter += 1
-        return label
+    def _create_unique_label(self, label_prefix):
+        """Generates a unique assembly label for branch instructions."""
+        new_label = f'{label_prefix}{self._generated_label_counter}'
+        self._generated_label_counter += 1
+        return new_label
 
-    def compile_class(self):
-        self._xml_open('class')
+    def parse_class(self):
+        """Parses a full Jack class declaration."""
+        self._open_xml_element('class')
 
-        self._eat('keyword', 'class')
-        _, class_name = self._eat('identifier')
-        self.class_name = class_name
-        self._eat('symbol', '{')
+        self._require_token('keyword', 'class')
+        _, actual_class_name = self._require_token('identifier')
+        self._current_class_name = actual_class_name
+        self._require_token('symbol', '{')
 
-        # classVarDec*
-        while self._is_token('keyword', ('static', 'field')):
-            self.compile_class_var_dec()
+        # Compile any static or field variable declarations
+        while self._matches_token('keyword', ('static', 'field')):
+            self.parse_class_var_declaration()
 
-        # subroutineDec*
-        while self._is_token('keyword', ('constructor', 'function', 'method')):
-            self.compile_subroutine_dec()
+        # Compile constructors, methods, and functions
+        while self._matches_token('keyword', ('constructor', 'function', 'method')):
+            self.parse_subroutine_declaration()
 
-        self._eat('symbol', '}')
+        self._require_token('symbol', '}')
 
-        self._xml_close('class')
-        self._save_xml()
-        self.vm_writer.close()
+        self._close_xml_element('class')
+        self._write_xml_file()
+        self._code_emitter.close_writer()
 
-    def compile_class_var_dec(self):
-        self._xml_open('classVarDec')
+    def parse_class_var_declaration(self):
+        """Parses class variable declarations: static or field."""
+        self._open_xml_element('classVarDec')
 
-        _, kind_str = self._eat('keyword', ('static', 'field'))
-        kind = STATIC if kind_str == 'static' else FIELD
+        _, variable_scope = self._require_token('keyword', ('static', 'field'))
+        kind = SCOPE_STATIC if variable_scope == 'static' else SCOPE_FIELD
 
-        # type
-        var_type = self._eat_type()
+        # Parse type specifier
+        data_type = self._require_data_type()
 
-        # varName
-        _, var_name = self._eat('identifier')
-        self.symbol_table.define(var_name, var_type, kind)
+        # Parse first variable identifier name
+        _, variable_name = self._require_token('identifier')
+        self._scope_table.register_symbol(variable_name, data_type, kind)
 
-        # (',' varName)*
-        while self._is_token('symbol', ','):
-            self._eat('symbol', ',')
-            _, var_name = self._eat('identifier')
-            self.symbol_table.define(var_name, var_type, kind)
+        # Parse other variables declared in the same line
+        while self._matches_token('symbol', ','):
+            self._require_token('symbol', ',')
+            _, variable_name = self._require_token('identifier')
+            self._scope_table.register_symbol(variable_name, data_type, kind)
 
-        self._eat('symbol', ';')
+        self._require_token('symbol', ';')
 
-        self._xml_close('classVarDec')
+        self._close_xml_element('classVarDec')
 
-    def compile_subroutine_dec(self):
-        self._xml_open('subroutineDec')
+    def parse_subroutine_declaration(self):
+        """Parses subroutine declarations: method, function, or constructor."""
+        self._open_xml_element('subroutineDec')
 
-        # Reset symbol table
-        self.symbol_table.start_subroutine()
+        # Clean local/subroutine scope symbols
+        self._scope_table.reset_subroutine_scope()
 
-        _, subroutine_type = self._eat('keyword', ('constructor', 'function', 'method'))
-        self.current_subroutine_type = subroutine_type
+        _, subroutine_kind = self._require_token('keyword', ('constructor', 'function', 'method'))
+        self._current_subroutine_type = subroutine_kind
 
-        # this -> argument 0 for methods
-        if subroutine_type == 'method':
-            self.symbol_table.define('this', self.class_name, ARG)
+        # Map 'this' pointer as first argument index 0 for instance methods
+        if subroutine_kind == 'method':
+            self._scope_table.register_symbol('this', self._current_class_name, SCOPE_ARG)
 
-        # return type
-        self._eat_type()
+        # Parse return type
+        self._require_data_type()
 
-        # subroutineName
-        _, subroutine_name = self._eat('identifier')
-        self.current_subroutine_name = subroutine_name
+        # Parse subroutine identifier name
+        _, subroutine_name = self._require_token('identifier')
+        self._current_subroutine_name = subroutine_name
 
-        self._eat('symbol', '(')
-        self.compile_parameter_list()
-        self._eat('symbol', ')')
+        self._require_token('symbol', '(')
+        self.parse_parameter_list()
+        self._require_token('symbol', ')')
 
-        # subroutineBody
-        self.compile_subroutine_body(subroutine_type, subroutine_name)
+        # Parse the remaining body blocks
+        self.parse_subroutine_body(subroutine_kind, subroutine_name)
 
-        self._xml_close('subroutineDec')
+        self._close_xml_element('subroutineDec')
 
-    def compile_parameter_list(self):
-        self._xml_open('parameterList')
+    def parse_parameter_list(self):
+        """Parses list of formal subroutine arguments."""
+        self._open_xml_element('parameterList')
 
-        if not self._is_token('symbol', ')'):
-            # First parameter
-            var_type = self._eat_type()
-            _, var_name = self._eat('identifier')
-            self.symbol_table.define(var_name, var_type, ARG)
+        if not self._matches_token('symbol', ')'):
+            # Compile first formal argument type & name
+            arg_type = self._require_data_type()
+            _, arg_name = self._require_token('identifier')
+            self._scope_table.register_symbol(arg_name, arg_type, SCOPE_ARG)
 
-            # (',' type varName)*
-            while self._is_token('symbol', ','):
-                self._eat('symbol', ',')
-                var_type = self._eat_type()
-                _, var_name = self._eat('identifier')
-                self.symbol_table.define(var_name, var_type, ARG)
+            # Compile additional optional arguments
+            while self._matches_token('symbol', ','):
+                self._require_token('symbol', ',')
+                arg_type = self._require_data_type()
+                _, arg_name = self._require_token('identifier')
+                self._scope_table.register_symbol(arg_name, arg_type, SCOPE_ARG)
 
-        self._xml_close('parameterList')
+        self._close_xml_element('parameterList')
 
-    def compile_subroutine_body(self, subroutine_type, subroutine_name):
-        self._xml_open('subroutineBody')
+    def parse_subroutine_body(self, subroutine_kind, subroutine_name):
+        """Parses statements and local variables within a subroutine body."""
+        self._open_xml_element('subroutineBody')
 
-        self._eat('symbol', '{')
+        self._require_token('symbol', '{')
 
-        # varDec*
-        while self._is_token('keyword', 'var'):
-            self.compile_var_dec()
+        # Parse all local variable declarations (var)
+        while self._matches_token('keyword', 'var'):
+            self.parse_local_var_declaration()
 
-        n_locals = self.symbol_table.var_count(VAR)
-        full_name = f'{self.class_name}.{subroutine_name}'
-        self.vm_writer.write_function(full_name, n_locals)
+        local_vars_count = self._scope_table.get_count_for_kind(SCOPE_VAR)
+        fully_qualified_subroutine_name = f'{self._current_class_name}.{subroutine_name}'
+        self._code_emitter.emit_function(fully_qualified_subroutine_name, local_vars_count)
 
-        if subroutine_type == 'constructor':
-            n_fields = self.symbol_table.var_count(FIELD)
-            self.vm_writer.write_push('constant', n_fields)
-            self.vm_writer.write_call('Memory.alloc', 1)
-            self.vm_writer.write_pop('pointer', 0)
+        # Constructor setup: allocate space on heap using Memory.alloc
+        if subroutine_kind == 'constructor':
+            fields_count = self._scope_table.get_count_for_kind(SCOPE_FIELD)
+            self._code_emitter.emit_push('constant', fields_count)
+            self._code_emitter.emit_call('Memory.alloc', 1)
+            self._code_emitter.emit_pop('pointer', 0)
 
-        elif subroutine_type == 'method':
-            self.vm_writer.write_push('argument', 0)
-            self.vm_writer.write_pop('pointer', 0)
+        # Instance Method setup: assign 'this' pointer from standard argument index 0
+        elif subroutine_kind == 'method':
+            self._code_emitter.emit_push('argument', 0)
+            self._code_emitter.emit_pop('pointer', 0)
 
-        # statements
-        self.compile_statements()
+        # Execute parser engine over code body statements
+        self.parse_statement_group()
 
-        self._eat('symbol', '}')
+        self._require_token('symbol', '}')
 
-        self._xml_close('subroutineBody')
+        self._close_xml_element('subroutineBody')
 
-    def compile_var_dec(self):
-        self._xml_open('varDec')
+    def parse_local_var_declaration(self):
+        """Parses local variable declarations inside methods/functions."""
+        self._open_xml_element('varDec')
 
-        self._eat('keyword', 'var')
-        var_type = self._eat_type()
+        self._require_token('keyword', 'var')
+        data_type = self._require_data_type()
 
-        _, var_name = self._eat('identifier')
-        self.symbol_table.define(var_name, var_type, VAR)
+        _, local_var_name = self._require_token('identifier')
+        self._scope_table.register_symbol(local_var_name, data_type, SCOPE_VAR)
 
-        while self._is_token('symbol', ','):
-            self._eat('symbol', ',')
-            _, var_name = self._eat('identifier')
-            self.symbol_table.define(var_name, var_type, VAR)
+        while self._matches_token('symbol', ','):
+            self._require_token('symbol', ',')
+            _, local_var_name = self._require_token('identifier')
+            self._scope_table.register_symbol(local_var_name, data_type, SCOPE_VAR)
 
-        self._eat('symbol', ';')
+        self._require_token('symbol', ';')
 
-        self._xml_close('varDec')
+        self._close_xml_element('varDec')
 
-    def _eat_type(self):
-        ct, cv = self._current_token()
-        if ct == 'keyword' and cv in ('int', 'char', 'boolean', 'void'):
-            self._eat('keyword')
-            return cv
+    def _require_data_type(self):
+        """Utility parser to match int, char, boolean, void or class names."""
+        token_type, token_value = self._get_active_token()
+        if token_type == 'keyword' and token_value in ('int', 'char', 'boolean', 'void'):
+            self._require_token('keyword')
+            return token_value
         else:
-            _, type_name = self._eat('identifier')
-            return type_name
+            _, identifier_type = self._require_token('identifier')
+            return identifier_type
 
-    def compile_statements(self):
-        self._xml_open('statements')
+    def parse_statement_group(self):
+        """Parses general blocks of code statements."""
+        self._open_xml_element('statements')
 
-        while self._is_token('keyword', ('let', 'if', 'while', 'do', 'return')):
-            _, kw = self._current_token()
-            if kw == 'let':
-                self.compile_let()
-            elif kw == 'if':
-                self.compile_if()
-            elif kw == 'while':
-                self.compile_while()
-            elif kw == 'do':
-                self.compile_do()
-            elif kw == 'return':
-                self.compile_return()
+        while self._matches_token('keyword', ('let', 'if', 'while', 'do', 'return')):
+            _, keyword_val = self._get_active_token()
+            if keyword_val == 'let':
+                self.parse_let_statement()
+            elif keyword_val == 'if':
+                self.parse_if_statement()
+            elif keyword_val == 'while':
+                self.parse_while_statement()
+            elif keyword_val == 'do':
+                self.parse_do_statement()
+            elif keyword_val == 'return':
+                self.parse_return_statement()
 
-        self._xml_close('statements')
+        self._close_xml_element('statements')
 
-    def compile_let(self):
-        self._xml_open('letStatement')
+    def parse_let_statement(self):
+        """Parses standard variable assignation let statements."""
+        self._open_xml_element('letStatement')
 
-        self._eat('keyword', 'let')
-        _, var_name = self._eat('identifier')
+        self._require_token('keyword', 'let')
+        _, target_var_name = self._require_token('identifier')
 
-        is_array = False
-        # Array indexing: varName[expression]
-        if self._is_token('symbol', '['):
-            is_array = True
-            self._eat('symbol', '[')
+        is_array_assignment = False
+        
+        # Check if indexing an array: let name[expression] = ...
+        if self._matches_token('symbol', '['):
+            is_array_assignment = True
+            self._require_token('symbol', '[')
 
-            # Push base address of array
-            segment = self.symbol_table.kind_of(var_name)
-            index = self.symbol_table.index_of(var_name)
-            self.vm_writer.write_push(segment, index)
+            # Look up array base memory segment and offset index
+            segment = self._scope_table.get_segment_of(target_var_name)
+            index = self._scope_table.get_index_of(target_var_name)
+            self._code_emitter.emit_push(segment, index)
 
-            # Compile index expression
-            self.compile_expression()
-            self._eat('symbol', ']')
+            # Evaluate inner expression index
+            self.parse_expression()
+            self._require_token('symbol', ']')
 
-            # arr + index
-            self.vm_writer.write_arithmetic('add')
+            # Compute actual offset address
+            self._code_emitter.emit_arithmetic('add')
 
-        self._eat('symbol', '=')
-        self.compile_expression()
-        self._eat('symbol', ';')
+        self._require_token('symbol', '=')
+        self.parse_expression()
+        self._require_token('symbol', ';')
 
-        if is_array:
-            # a[i] = expr
-            self.vm_writer.write_pop('temp', 0)
-            self.vm_writer.write_pop('pointer', 1)
-            self.vm_writer.write_push('temp', 0)
-            self.vm_writer.write_pop('that', 0)
+        if is_array_assignment:
+            # Pop value of expression to temp, set array index in THAT, and pop to THAT 0
+            self._code_emitter.emit_pop('temp', 0)
+            self._code_emitter.emit_pop('pointer', 1)
+            self._code_emitter.emit_push('temp', 0)
+            self._code_emitter.emit_pop('that', 0)
         else:
-            segment = self.symbol_table.kind_of(var_name)
-            index = self.symbol_table.index_of(var_name)
-            self.vm_writer.write_pop(segment, index)
+            segment = self._scope_table.get_segment_of(target_var_name)
+            index = self._scope_table.get_index_of(target_var_name)
+            self._code_emitter.emit_pop(segment, index)
 
-        self._xml_close('letStatement')
+        self._close_xml_element('letStatement')
 
-    def compile_if(self):
-        self._xml_open('ifStatement')
+    def parse_if_statement(self):
+        """Parses branching blocks: if / else statements."""
+        self._open_xml_element('ifStatement')
 
-        label_false = self._new_label('IF_FALSE')
-        label_end = self._new_label('IF_END')
+        label_if_false = self._create_unique_label('IF_FALSE')
+        label_if_end = self._create_unique_label('IF_END')
 
-        self._eat('keyword', 'if')
-        self._eat('symbol', '(')
-        self.compile_expression()
-        self._eat('symbol', ')')
+        self._require_token('keyword', 'if')
+        self._require_token('symbol', '(')
+        self.parse_expression()
+        self._require_token('symbol', ')')
 
-        # if ~(condition) goto FALSE
-        self.vm_writer.write_arithmetic('not')
-        self.vm_writer.write_if(label_false)
+        # Negate condition outcome and jump past true block if false
+        self._code_emitter.emit_arithmetic('not')
+        self._code_emitter.emit_if_goto(label_if_false)
 
-        self._eat('symbol', '{')
-        self.compile_statements()
-        self._eat('symbol', '}')
+        self._require_token('symbol', '{')
+        self.parse_statement_group()
+        self._require_token('symbol', '}')
 
-        # Else clause
-        if self._is_token('keyword', 'else'):
-            self.vm_writer.write_goto(label_end)
-            self.vm_writer.write_label(label_false)
+        # Handle optional else block
+        if self._matches_token('keyword', 'else'):
+            self._code_emitter.emit_goto(label_if_end)
+            self._code_emitter.emit_label(label_if_false)
 
-            self._eat('keyword', 'else')
-            self._eat('symbol', '{')
-            self.compile_statements()
-            self._eat('symbol', '}')
+            self._require_token('keyword', 'else')
+            self._require_token('symbol', '{')
+            self.parse_statement_group()
+            self._require_token('symbol', '}')
 
-            self.vm_writer.write_label(label_end)
+            self._code_emitter.emit_label(label_if_end)
         else:
-            self.vm_writer.write_label(label_false)
+            self._code_emitter.emit_label(label_if_false)
 
-        self._xml_close('ifStatement')
+        self._close_xml_element('ifStatement')
 
-    def compile_while(self):
-        self._xml_open('whileStatement')
+    def parse_while_statement(self):
+        """Parses while statement loops."""
+        self._open_xml_element('whileStatement')
 
-        label_loop = self._new_label('WHILE_EXP')
-        label_end = self._new_label('WHILE_END')
+        loop_label = self._create_unique_label('WHILE_EXP')
+        end_label = self._create_unique_label('WHILE_END')
 
-        self.vm_writer.write_label(label_loop)
+        self._code_emitter.emit_label(loop_label)
 
-        self._eat('keyword', 'while')
-        self._eat('symbol', '(')
-        self.compile_expression()
-        self._eat('symbol', ')')
+        self._require_token('keyword', 'while')
+        self._require_token('symbol', '(')
+        self.parse_expression()
+        self._require_token('symbol', ')')
 
-        # if ~(condition) goto END
-        self.vm_writer.write_arithmetic('not')
-        self.vm_writer.write_if(label_end)
+        # Check loop condition: exit if false
+        self._code_emitter.emit_arithmetic('not')
+        self._code_emitter.emit_if_goto(end_label)
 
-        self._eat('symbol', '{')
-        self.compile_statements()
-        self._eat('symbol', '}')
+        self._require_token('symbol', '{')
+        self.parse_statement_group()
+        self._require_token('symbol', '}')
 
-        self.vm_writer.write_goto(label_loop)
-        self.vm_writer.write_label(label_end)
+        # Recheck loop condition
+        self._code_emitter.emit_goto(loop_label)
+        self._code_emitter.emit_label(end_label)
 
-        self._xml_close('whileStatement')
+        self._close_xml_element('whileStatement')
 
-    def compile_do(self):
-        self._xml_open('doStatement')
+    def parse_do_statement(self):
+        """Parses do statement subroutine calls (ignores return values)."""
+        self._open_xml_element('doStatement')
 
-        self._eat('keyword', 'do')
+        self._require_token('keyword', 'do')
+        self._parse_subroutine_call()
+        self._require_token('symbol', ';')
 
-        self._compile_subroutine_call()
+        # Pop out dummy return value to preserve clean stack
+        self._code_emitter.emit_pop('temp', 0)
 
-        self._eat('symbol', ';')
+        self._close_xml_element('doStatement')
 
-        # Discard the return value
-        self.vm_writer.write_pop('temp', 0)
+    def parse_return_statement(self):
+        """Parses return statements in functions/methods/constructors."""
+        self._open_xml_element('returnStatement')
 
-        self._xml_close('doStatement')
+        self._require_token('keyword', 'return')
 
-    def compile_return(self):
-        self._xml_open('returnStatement')
-
-        self._eat('keyword', 'return')
-
-        if not self._is_token('symbol', ';'):
-            self.compile_expression()
+        if not self._matches_token('symbol', ';'):
+            self.parse_expression()
         else:
-            # Void function: push 0 as dummy return value
-            self.vm_writer.write_push('constant', 0)
+            # Returns 0 as dummy value for void methods/functions
+            self._code_emitter.emit_push('constant', 0)
 
-        self._eat('symbol', ';')
-        self.vm_writer.write_return()
+        self._require_token('symbol', ';')
+        self._code_emitter.emit_return()
 
-        self._xml_close('returnStatement')
+        self._close_xml_element('returnStatement')
 
-    def compile_expression(self):
-        self._xml_open('expression')
+    def parse_expression(self):
+        """Parses mathematical expression statements."""
+        self._open_xml_element('expression')
 
-        self.compile_term()
+        self.parse_term()
 
-        # (op term)*
-        while self._is_token('symbol', ('+', '-', '*', '/', '&', '|', '<', '>', '=')):
-            _, op = self._eat('symbol')
-            self.compile_term()
+        # Parse continuous operator expressions (left to right evaluation)
+        while self._matches_token('symbol', ('+', '-', '*', '/', '&', '|', '<', '>', '=')):
+            _, math_operator = self._require_token('symbol')
+            self.parse_term()
 
-            if op == '*':
-                self.vm_writer.write_call('Math.multiply', 2)
-            elif op == '/':
-                self.vm_writer.write_call('Math.divide', 2)
+            # Compile non-primitive operators via OS Math class
+            if math_operator == '*':
+                self._code_emitter.emit_call('Math.multiply', 2)
+            elif math_operator == '/':
+                self._code_emitter.emit_call('Math.divide', 2)
             else:
-                self.vm_writer.write_arithmetic(OP_COMMANDS[op])
+                self._code_emitter.emit_arithmetic(BINARY_MATH_COMMANDS[math_operator])
 
-        self._xml_close('expression')
+        self._close_xml_element('expression')
 
-    def compile_term(self):
-        self._xml_open('term')
+    def parse_term(self):
+        """Parses atomic expression terms: literals, identifiers, nested blocks."""
+        self._open_xml_element('term')
 
-        ct, cv = self._current_token()
+        token_type, token_val = self._get_active_token()
 
-        if ct == 'integerConstant':
-            self._eat('integerConstant')
-            self.vm_writer.write_push('constant', int(cv))
+        if token_type == 'integerConstant':
+            self._require_token('integerConstant')
+            self._code_emitter.emit_push('constant', int(token_val))
 
-        elif ct == 'stringConstant':
-            self._eat('stringConstant')
+        elif token_type == 'stringConstant':
+            self._require_token('stringConstant')
+            # Build string characters one-by-one
+            self._code_emitter.emit_push('constant', len(token_val))
+            self._code_emitter.emit_call('String.new', 1)
+            for character in token_val:
+                self._code_emitter.emit_push('constant', ord(character))
+                self._code_emitter.emit_call('String.appendChar', 2)
 
-            self.vm_writer.write_push('constant', len(cv))
-            self.vm_writer.write_call('String.new', 1)
-            for ch in cv:
-                self.vm_writer.write_push('constant', ord(ch))
-                self.vm_writer.write_call('String.appendChar', 2)
+        elif token_type == 'keyword' and token_val in ('true', 'false', 'null', 'this'):
+            self._require_token('keyword')
+            if token_val == 'true':
+                self._code_emitter.emit_push('constant', 0)
+                self._code_emitter.emit_arithmetic('not')
+            elif token_val in ('false', 'null'):
+                self._code_emitter.emit_push('constant', 0)
+            elif token_val == 'this':
+                self._code_emitter.emit_push('pointer', 0)
 
-        elif ct == 'keyword' and cv in ('true', 'false', 'null', 'this'):
-            self._eat('keyword')
-            if cv == 'true':
-                self.vm_writer.write_push('constant', 0)
-                self.vm_writer.write_arithmetic('not')
-            elif cv in ('false', 'null'):
-                self.vm_writer.write_push('constant', 0)
-            elif cv == 'this':
-                self.vm_writer.write_push('pointer', 0)
+        elif token_type == 'symbol' and token_val == '(':
+            self._require_token('symbol', '(')
+            self.parse_expression()
+            self._require_token('symbol', ')')
 
-        elif ct == 'symbol' and cv == '(':
-            # '(' expression ')'
-            self._eat('symbol', '(')
-            self.compile_expression()
-            self._eat('symbol', ')')
+        elif token_type == 'symbol' and token_val in ('-', '~'):
+            self._require_token('symbol')
+            self.parse_term()
+            self._code_emitter.emit_arithmetic(UNARY_MATH_COMMANDS[token_val])
 
-        elif ct == 'symbol' and cv in ('-', '~'):
-            # unaryOp term
-            self._eat('symbol')
-            self.compile_term()
-            self.vm_writer.write_arithmetic(UNARY_OP_COMMANDS[cv])
+        elif token_type == 'identifier':
+            _, subsequent_val = self._lookahead_next_token()
 
-        elif ct == 'identifier':
-            next_type, next_val = self._peek_token()
+            # Array access
+            if subsequent_val == '[':
+                _, var_name = self._require_token('identifier')
+                self._require_token('symbol', '[')
 
-            if next_val == '[':
-                _, var_name = self._eat('identifier')
-                self._eat('symbol', '[')
+                segment = self._scope_table.get_segment_of(var_name)
+                index = self._scope_table.get_index_of(var_name)
+                self._code_emitter.emit_push(segment, index)
 
-                segment = self.symbol_table.kind_of(var_name)
-                index = self.symbol_table.index_of(var_name)
-                self.vm_writer.write_push(segment, index)
+                self.parse_expression()
+                self._require_token('symbol', ']')
 
-                self.compile_expression()
-                self._eat('symbol', ']')
+                self._code_emitter.emit_arithmetic('add')
+                self._code_emitter.emit_pop('pointer', 1)
+                self._code_emitter.emit_push('that', 0)
 
-                self.vm_writer.write_arithmetic('add')
-                self.vm_writer.write_pop('pointer', 1)
-                self.vm_writer.write_push('that', 0)
+            # Subroutine invocation
+            elif subsequent_val in ('(', '.'):
+                self._parse_subroutine_call()
 
-            elif next_val == '(' or next_val == '.':
-                self._compile_subroutine_call()
-
+            # Normal variable access
             else:
-                _, var_name = self._eat('identifier')
-                segment = self.symbol_table.kind_of(var_name)
-                index = self.symbol_table.index_of(var_name)
-                self.vm_writer.write_push(segment, index)
+                _, var_name = self._require_token('identifier')
+                segment = self._scope_table.get_segment_of(var_name)
+                index = self._scope_table.get_index_of(var_name)
+                self._code_emitter.emit_push(segment, index)
 
-        self._xml_close('term')
+        self._close_xml_element('term')
 
-    def compile_expression_list(self):
-        self._xml_open('expressionList')
+    def parse_expression_list(self):
+        """Parses parameter expressions in a subroutine call, returns total arguments count."""
+        self._open_xml_element('expressionList')
 
-        n_args = 0
+        args_count = 0
 
-        if not self._is_token('symbol', ')'):
-            self.compile_expression()
-            n_args = 1
+        if not self._matches_token('symbol', ')'):
+            self.parse_expression()
+            args_count = 1
 
-            while self._is_token('symbol', ','):
-                self._eat('symbol', ',')
-                self.compile_expression()
-                n_args += 1
+            while self._matches_token('symbol', ','):
+                self._require_token('symbol', ',')
+                self.parse_expression()
+                args_count += 1
 
-        self._xml_close('expressionList')
-        return n_args
+        self._close_xml_element('expressionList')
+        return args_count
 
-    def _compile_subroutine_call(self):
-        _, first_name = self._eat('identifier')
+    def _parse_subroutine_call(self):
+        """Internal helper to parse both local and external class/object method calls."""
+        _, initial_identifier = self._require_token('identifier')
 
-        if self._is_token('symbol', '.'):
-            self._eat('symbol', '.')
-            _, subroutine_name = self._eat('identifier')
+        if self._matches_token('symbol', '.'):
+            self._require_token('symbol', '.')
+            _, subroutine_name = self._require_token('identifier')
 
-            if self.symbol_table.contains(first_name):
-                obj_type = self.symbol_table.type_of(first_name)
-                segment = self.symbol_table.kind_of(first_name)
-                index = self.symbol_table.index_of(first_name)
-                self.vm_writer.write_push(segment, index)
+            # Check if identifier references an existing variable in scope (instance method call)
+            if self._scope_table.has_symbol(initial_identifier):
+                obj_type = self._scope_table.get_type_of(initial_identifier)
+                segment = self._scope_table.get_segment_of(initial_identifier)
+                index = self._scope_table.get_index_of(initial_identifier)
+                self._code_emitter.emit_push(segment, index)
 
-                self._eat('symbol', '(')
-                n_args = self.compile_expression_list()
-                self._eat('symbol', ')')
+                self._require_token('symbol', '(')
+                args_count = self.parse_expression_list()
+                self._require_token('symbol', ')')
 
-                self.vm_writer.write_call(f'{obj_type}.{subroutine_name}', n_args + 1)
+                self._code_emitter.emit_call(f'{obj_type}.{subroutine_name}', args_count + 1)
+            # Static function / OS utility call
             else:
-                self._eat('symbol', '(')
-                n_args = self.compile_expression_list()
-                self._eat('symbol', ')')
+                self._require_token('symbol', '(')
+                args_count = self.parse_expression_list()
+                self._require_token('symbol', ')')
 
-                self.vm_writer.write_call(f'{first_name}.{subroutine_name}', n_args)
+                self._code_emitter.emit_call(f'{initial_identifier}.{subroutine_name}', args_count)
 
-        elif self._is_token('symbol', '('):
-            self.vm_writer.write_push('pointer', 0)
+        elif self._matches_token('symbol', '('):
+            # Implicit local method call over 'this' pointer
+            self._code_emitter.emit_push('pointer', 0)
 
-            self._eat('symbol', '(')
-            n_args = self.compile_expression_list()
-            self._eat('symbol', ')')
+            self._require_token('symbol', '(')
+            args_count = self.parse_expression_list()
+            self._require_token('symbol', ')')
 
-            self.vm_writer.write_call(
-                f'{self.class_name}.{first_name}', n_args + 1
+            self._code_emitter.emit_call(
+                f'{self._current_class_name}.{initial_identifier}', args_count + 1
             )

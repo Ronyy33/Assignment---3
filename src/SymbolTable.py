@@ -1,71 +1,114 @@
-STATIC = 'static'
-FIELD  = 'field'
-ARG    = 'argument'
-VAR    = 'var'
+"""
+SymbolTable - Manages mapping of identifiers in Jack source to their type,
+kind (static, field, argument, local), and index offset within their respective segment.
+"""
 
-KIND_TO_SEGMENT = {
-    STATIC: 'static',
-    FIELD:  'this',
-    ARG:    'argument',
-    VAR:    'local',
+SCOPE_STATIC = 'static'
+SCOPE_FIELD  = 'field'
+SCOPE_ARG    = 'argument'
+SCOPE_VAR    = 'var'
+
+SEGMENT_MAPPING = {
+    SCOPE_STATIC: 'static',
+    SCOPE_FIELD:  'this',
+    SCOPE_ARG:    'argument',
+    SCOPE_VAR:    'local',
 }
 
 
-class SymbolTable:
+class LexicalScopeTable:
+    """
+    Tracks identifiers across class-level scope and subroutine-level scope.
+    """
 
     def __init__(self):
-        self.class_table = {}       # name to (type, kind, index)
-        self.subroutine_table = {}  # name to (type, kind, index)
-        self.counts = {STATIC: 0, FIELD: 0, ARG: 0, VAR: 0}
+        self._class_symbols = {}      # maps identifier to (type, kind, index)
+        self._subroutine_symbols = {} # maps identifier to (type, kind, index)
+        self._index_counters = {
+            SCOPE_STATIC: 0,
+            SCOPE_FIELD: 0,
+            SCOPE_ARG: 0,
+            SCOPE_VAR: 0
+        }
 
-    def start_subroutine(self):
-        self.subroutine_table = {}
-        self.counts[ARG] = 0
-        self.counts[VAR] = 0
+    def reset_subroutine_scope(self):
+        """
+        Clears the subroutine scope table and resets arguments and variable indexes to 0.
+        """
+        self._subroutine_symbols.clear()
+        self._index_counters[SCOPE_ARG] = 0
+        self._index_counters[SCOPE_VAR] = 0
 
-    def define(self, name, var_type, kind):
-        index = self.counts[kind]
+    def register_symbol(self, name, var_type, kind):
+        """
+        Defines a new identifier with a name, type, and kind in the appropriate scope.
+        """
+        index = self._index_counters[kind]
         entry = (var_type, kind, index)
-        self.counts[kind] += 1
+        self._index_counters[kind] += 1
 
-        if kind in (STATIC, FIELD):
-            self.class_table[name] = entry
+        if kind in (SCOPE_STATIC, SCOPE_FIELD):
+            self._class_symbols[name] = entry
         else:
-            self.subroutine_table[name] = entry
+            self._subroutine_symbols[name] = entry
 
-    def var_count(self, kind):
-        return self.counts[kind]
+    def get_count_for_kind(self, kind):
+        """
+        Returns the number of variables defined in the current scope for the given kind.
+        """
+        return self._index_counters[kind]
 
-    def _lookup(self, name):
-        if name in self.subroutine_table:
-            return self.subroutine_table[name]
-        if name in self.class_table:
-            return self.class_table[name]
+    def _resolve_symbol(self, name):
+        """
+        Internal lookup helper that checks subroutine scope first, then class scope.
+        """
+        if name in self._subroutine_symbols:
+            return self._subroutine_symbols[name]
+        return self._class_symbols.get(name, None)
+
+    def get_segment_of(self, name):
+        """
+        Returns the target memory segment corresponding to the variable's scope kind.
+        """
+        entry = self._resolve_symbol(name)
+        if entry is not None:
+            _, kind, _ = entry
+            return SEGMENT_MAPPING[kind]
         return None
 
-    def kind_of(self, name):
-        entry = self._lookup(name)
-        if entry is None:
-            return None
-        _, kind, _ = entry
-        return KIND_TO_SEGMENT[kind]
+    def get_type_of(self, name):
+        """
+        Returns the declared type of the identifier.
+        """
+        entry = self._resolve_symbol(name)
+        if entry is not None:
+            return entry[0]
+        return None
 
-    def type_of(self, name):
-        entry = self._lookup(name)
-        if entry is None:
-            return None
-        return entry[0]
+    def get_index_of(self, name):
+        """
+        Returns the index offset of the identifier in its segment.
+        """
+        entry = self._resolve_symbol(name)
+        if entry is not None:
+            return entry[2]
+        return None
 
-    def index_of(self, name):
-        entry = self._lookup(name)
-        if entry is None:
-            return None
-        return entry[2]
+    def has_symbol(self, name):
+        """
+        Queries if the identifier exists in either the subroutine or class scope.
+        """
+        return self._resolve_symbol(name) is not None
 
-    def contains(self, name):
-        return self._lookup(name) is not None
-
-    def reset(self):
-        self.class_table = {}
-        self.subroutine_table = {}
-        self.counts = {STATIC: 0, FIELD: 0, ARG: 0, VAR: 0}
+    def clear_all(self):
+        """
+        Resets both scopes and all index counters completely.
+        """
+        self._class_symbols.clear()
+        self._subroutine_symbols.clear()
+        self._index_counters = {
+            SCOPE_STATIC: 0,
+            SCOPE_FIELD: 0,
+            SCOPE_ARG: 0,
+            SCOPE_VAR: 0
+        }

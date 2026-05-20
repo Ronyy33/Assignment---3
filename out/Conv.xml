@@ -5,31 +5,31 @@
   <classVarDec>
     <keyword> static </keyword>
     <identifier> Array </identifier>
-    <identifier> ArrayFilter </identifier>
+    <identifier> kernelMatrix </identifier>
     <symbol> ; </symbol>
   </classVarDec>
   <classVarDec>
     <keyword> static </keyword>
     <keyword> int </keyword>
-    <identifier> stride </identifier>
+    <identifier> strideStep </identifier>
     <symbol> ; </symbol>
   </classVarDec>
   <classVarDec>
     <keyword> field </keyword>
     <identifier> Array </identifier>
-    <identifier> ArrayInput </identifier>
+    <identifier> inputTensor </identifier>
     <symbol> ; </symbol>
   </classVarDec>
   <classVarDec>
     <keyword> field </keyword>
     <identifier> Array </identifier>
-    <identifier> ArrayOutput </identifier>
+    <identifier> outputTensor </identifier>
     <symbol> ; </symbol>
   </classVarDec>
   <classVarDec>
     <keyword> field </keyword>
     <keyword> int </keyword>
-    <identifier> ArraySize </identifier>
+    <identifier> inputSize </identifier>
     <symbol> ; </symbol>
   </classVarDec>
   <subroutineDec>
@@ -47,19 +47,19 @@
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> outDim </identifier>
+        <identifier> dimOutput </identifier>
         <symbol> ; </symbol>
       </varDec>
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> outTotal </identifier>
+        <identifier> lenOutput </identifier>
         <symbol> ; </symbol>
       </varDec>
       <statements>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> ArraySize </identifier>
+          <identifier> inputSize </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -70,7 +70,7 @@
         </letStatement>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> stride </identifier>
+          <identifier> strideStep </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -81,7 +81,7 @@
         </letStatement>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> ArrayInput </identifier>
+          <identifier> inputTensor </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -107,7 +107,7 @@
         </letStatement>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> outDim </identifier>
+          <identifier> dimOutput </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -128,7 +128,7 @@
                 </term>
                 <symbol> / </symbol>
                 <term>
-                  <identifier> stride </identifier>
+                  <identifier> strideStep </identifier>
                 </term>
               </expression>
               <symbol> ) </symbol>
@@ -145,14 +145,43 @@
           <symbol> ( </symbol>
           <expression>
             <term>
-              <identifier> outDim </identifier>
-            </term>
-            <symbol> &lt; </symbol>
-            <term>
-              <integerConstant> 1 </integerConstant>
+              <symbol> ~ </symbol>
+              <term>
+                <symbol> ( </symbol>
+                <expression>
+                  <term>
+                    <identifier> dimOutput </identifier>
+                  </term>
+                  <symbol> &lt; </symbol>
+                  <term>
+                    <integerConstant> 1 </integerConstant>
+                  </term>
+                </expression>
+                <symbol> ) </symbol>
+              </term>
             </term>
           </expression>
           <symbol> ) </symbol>
+          <symbol> { </symbol>
+          <statements>
+            <letStatement>
+              <keyword> let </keyword>
+              <identifier> lenOutput </identifier>
+              <symbol> = </symbol>
+              <expression>
+                <term>
+                  <identifier> dimOutput </identifier>
+                </term>
+                <symbol> * </symbol>
+                <term>
+                  <identifier> dimOutput </identifier>
+                </term>
+              </expression>
+              <symbol> ; </symbol>
+            </letStatement>
+          </statements>
+          <symbol> } </symbol>
+          <keyword> else </keyword>
           <symbol> { </symbol>
           <statements>
             <doStatement>
@@ -182,7 +211,7 @@
             </doStatement>
             <letStatement>
               <keyword> let </keyword>
-              <identifier> outTotal </identifier>
+              <identifier> lenOutput </identifier>
               <symbol> = </symbol>
               <expression>
                 <term>
@@ -193,30 +222,10 @@
             </letStatement>
           </statements>
           <symbol> } </symbol>
-          <keyword> else </keyword>
-          <symbol> { </symbol>
-          <statements>
-            <letStatement>
-              <keyword> let </keyword>
-              <identifier> outTotal </identifier>
-              <symbol> = </symbol>
-              <expression>
-                <term>
-                  <identifier> outDim </identifier>
-                </term>
-                <symbol> * </symbol>
-                <term>
-                  <identifier> outDim </identifier>
-                </term>
-              </expression>
-              <symbol> ; </symbol>
-            </letStatement>
-          </statements>
-          <symbol> } </symbol>
         </ifStatement>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> ArrayOutput </identifier>
+          <identifier> outputTensor </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -227,7 +236,7 @@
               <expressionList>
                 <expression>
                   <term>
-                    <identifier> outTotal </identifier>
+                    <identifier> lenOutput </identifier>
                   </term>
                 </expression>
               </expressionList>
@@ -241,7 +250,7 @@
           <symbol> ( </symbol>
           <expression>
             <term>
-              <identifier> ArrayFilter </identifier>
+              <identifier> kernelMatrix </identifier>
             </term>
             <symbol> = </symbol>
             <term>
@@ -253,7 +262,7 @@
           <statements>
             <letStatement>
               <keyword> let </keyword>
-              <identifier> ArrayFilter </identifier>
+              <identifier> kernelMatrix </identifier>
               <symbol> = </symbol>
               <expression>
                 <term>
@@ -296,7 +305,7 @@
     <symbol> ( </symbol>
     <parameterList>
       <identifier> Array </identifier>
-      <identifier> values </identifier>
+      <identifier> filterVals </identifier>
     </parameterList>
     <symbol> ) </symbol>
     <subroutineBody>
@@ -304,13 +313,13 @@
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> i </identifier>
+        <identifier> idx </identifier>
         <symbol> ; </symbol>
       </varDec>
       <statements>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> i </identifier>
+          <identifier> idx </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -324,11 +333,20 @@
           <symbol> ( </symbol>
           <expression>
             <term>
-              <identifier> i </identifier>
-            </term>
-            <symbol> &lt; </symbol>
-            <term>
-              <integerConstant> 9 </integerConstant>
+              <symbol> ~ </symbol>
+              <term>
+                <symbol> ( </symbol>
+                <expression>
+                  <term>
+                    <identifier> idx </identifier>
+                  </term>
+                  <symbol> &gt; </symbol>
+                  <term>
+                    <integerConstant> 8 </integerConstant>
+                  </term>
+                </expression>
+                <symbol> ) </symbol>
+              </term>
             </term>
           </expression>
           <symbol> ) </symbol>
@@ -336,22 +354,22 @@
           <statements>
             <letStatement>
               <keyword> let </keyword>
-              <identifier> ArrayFilter </identifier>
+              <identifier> kernelMatrix </identifier>
               <symbol> [ </symbol>
               <expression>
                 <term>
-                  <identifier> i </identifier>
+                  <identifier> idx </identifier>
                 </term>
               </expression>
               <symbol> ] </symbol>
               <symbol> = </symbol>
               <expression>
                 <term>
-                  <identifier> values </identifier>
+                  <identifier> filterVals </identifier>
                   <symbol> [ </symbol>
                   <expression>
                     <term>
-                      <identifier> i </identifier>
+                      <identifier> idx </identifier>
                     </term>
                   </expression>
                   <symbol> ] </symbol>
@@ -361,11 +379,11 @@
             </letStatement>
             <letStatement>
               <keyword> let </keyword>
-              <identifier> i </identifier>
+              <identifier> idx </identifier>
               <symbol> = </symbol>
               <expression>
                 <term>
-                  <identifier> i </identifier>
+                  <identifier> idx </identifier>
                 </term>
                 <symbol> + </symbol>
                 <term>
@@ -392,10 +410,10 @@
     <symbol> ( </symbol>
     <parameterList>
       <identifier> Array </identifier>
-      <identifier> input </identifier>
+      <identifier> srcData </identifier>
       <symbol> , </symbol>
       <keyword> int </keyword>
-      <identifier> size </identifier>
+      <identifier> sideLen </identifier>
     </parameterList>
     <symbol> ) </symbol>
     <subroutineBody>
@@ -403,45 +421,45 @@
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> i </identifier>
+        <identifier> offset </identifier>
         <symbol> ; </symbol>
       </varDec>
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> total </identifier>
+        <identifier> elementsCount </identifier>
         <symbol> ; </symbol>
       </varDec>
       <statements>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> ArraySize </identifier>
+          <identifier> inputSize </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
-              <identifier> size </identifier>
+              <identifier> sideLen </identifier>
             </term>
           </expression>
           <symbol> ; </symbol>
         </letStatement>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> total </identifier>
+          <identifier> elementsCount </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
-              <identifier> size </identifier>
+              <identifier> sideLen </identifier>
             </term>
             <symbol> * </symbol>
             <term>
-              <identifier> size </identifier>
+              <identifier> sideLen </identifier>
             </term>
           </expression>
           <symbol> ; </symbol>
         </letStatement>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> i </identifier>
+          <identifier> offset </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -455,11 +473,11 @@
           <symbol> ( </symbol>
           <expression>
             <term>
-              <identifier> i </identifier>
+              <identifier> offset </identifier>
             </term>
             <symbol> &lt; </symbol>
             <term>
-              <identifier> total </identifier>
+              <identifier> elementsCount </identifier>
             </term>
           </expression>
           <symbol> ) </symbol>
@@ -467,22 +485,22 @@
           <statements>
             <letStatement>
               <keyword> let </keyword>
-              <identifier> ArrayInput </identifier>
+              <identifier> inputTensor </identifier>
               <symbol> [ </symbol>
               <expression>
                 <term>
-                  <identifier> i </identifier>
+                  <identifier> offset </identifier>
                 </term>
               </expression>
               <symbol> ] </symbol>
               <symbol> = </symbol>
               <expression>
                 <term>
-                  <identifier> input </identifier>
+                  <identifier> srcData </identifier>
                   <symbol> [ </symbol>
                   <expression>
                     <term>
-                      <identifier> i </identifier>
+                      <identifier> offset </identifier>
                     </term>
                   </expression>
                   <symbol> ] </symbol>
@@ -492,11 +510,11 @@
             </letStatement>
             <letStatement>
               <keyword> let </keyword>
-              <identifier> i </identifier>
+              <identifier> offset </identifier>
               <symbol> = </symbol>
               <expression>
                 <term>
-                  <identifier> i </identifier>
+                  <identifier> offset </identifier>
                 </term>
                 <symbol> + </symbol>
                 <term>
@@ -526,9 +544,17 @@
     <symbol> ) </symbol>
     <subroutineBody>
       <symbol> { </symbol>
+      <varDec>
+        <keyword> var </keyword>
+        <keyword> int </keyword>
+        <identifier> resultDim </identifier>
+        <symbol> ; </symbol>
+      </varDec>
       <statements>
-        <returnStatement>
-          <keyword> return </keyword>
+        <letStatement>
+          <keyword> let </keyword>
+          <identifier> resultDim </identifier>
+          <symbol> = </symbol>
           <expression>
             <term>
               <symbol> ( </symbol>
@@ -537,7 +563,7 @@
                   <symbol> ( </symbol>
                   <expression>
                     <term>
-                      <identifier> ArraySize </identifier>
+                      <identifier> inputSize </identifier>
                     </term>
                     <symbol> - </symbol>
                     <term>
@@ -548,7 +574,7 @@
                 </term>
                 <symbol> / </symbol>
                 <term>
-                  <identifier> stride </identifier>
+                  <identifier> strideStep </identifier>
                 </term>
               </expression>
               <symbol> ) </symbol>
@@ -556,6 +582,15 @@
             <symbol> + </symbol>
             <term>
               <integerConstant> 1 </integerConstant>
+            </term>
+          </expression>
+          <symbol> ; </symbol>
+        </letStatement>
+        <returnStatement>
+          <keyword> return </keyword>
+          <expression>
+            <term>
+              <identifier> resultDim </identifier>
             </term>
           </expression>
           <symbol> ; </symbol>
@@ -577,49 +612,49 @@
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> outDim </identifier>
+        <identifier> dimOut </identifier>
         <symbol> ; </symbol>
       </varDec>
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> outRow </identifier>
+        <identifier> rOut </identifier>
         <symbol> , </symbol>
-        <identifier> outCol </identifier>
+        <identifier> cOut </identifier>
         <symbol> ; </symbol>
       </varDec>
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> inRow </identifier>
+        <identifier> rIn </identifier>
         <symbol> , </symbol>
-        <identifier> inCol </identifier>
+        <identifier> cIn </identifier>
         <symbol> ; </symbol>
       </varDec>
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> fr </identifier>
+        <identifier> rF </identifier>
         <symbol> , </symbol>
-        <identifier> fc </identifier>
+        <identifier> cF </identifier>
         <symbol> ; </symbol>
       </varDec>
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> sum </identifier>
+        <identifier> cellVal </identifier>
         <symbol> ; </symbol>
       </varDec>
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> k </identifier>
+        <identifier> outIdx </identifier>
         <symbol> ; </symbol>
       </varDec>
       <statements>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> outDim </identifier>
+          <identifier> dimOut </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -637,11 +672,20 @@
           <symbol> ( </symbol>
           <expression>
             <term>
-              <identifier> outDim </identifier>
-            </term>
-            <symbol> &lt; </symbol>
-            <term>
-              <integerConstant> 1 </integerConstant>
+              <symbol> ~ </symbol>
+              <term>
+                <symbol> ( </symbol>
+                <expression>
+                  <term>
+                    <identifier> dimOut </identifier>
+                  </term>
+                  <symbol> &gt; </symbol>
+                  <term>
+                    <integerConstant> 0 </integerConstant>
+                  </term>
+                </expression>
+                <symbol> ) </symbol>
+              </term>
             </term>
           </expression>
           <symbol> ) </symbol>
@@ -681,7 +725,7 @@
         </ifStatement>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> k </identifier>
+          <identifier> outIdx </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -692,7 +736,7 @@
         </letStatement>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> outRow </identifier>
+          <identifier> rOut </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -706,11 +750,11 @@
           <symbol> ( </symbol>
           <expression>
             <term>
-              <identifier> outRow </identifier>
+              <identifier> rOut </identifier>
             </term>
             <symbol> &lt; </symbol>
             <term>
-              <identifier> outDim </identifier>
+              <identifier> dimOut </identifier>
             </term>
           </expression>
           <symbol> ) </symbol>
@@ -718,7 +762,7 @@
           <statements>
             <letStatement>
               <keyword> let </keyword>
-              <identifier> outCol </identifier>
+              <identifier> cOut </identifier>
               <symbol> = </symbol>
               <expression>
                 <term>
@@ -732,11 +776,11 @@
               <symbol> ( </symbol>
               <expression>
                 <term>
-                  <identifier> outCol </identifier>
+                  <identifier> cOut </identifier>
                 </term>
                 <symbol> &lt; </symbol>
                 <term>
-                  <identifier> outDim </identifier>
+                  <identifier> dimOut </identifier>
                 </term>
               </expression>
               <symbol> ) </symbol>
@@ -744,7 +788,7 @@
               <statements>
                 <letStatement>
                   <keyword> let </keyword>
-                  <identifier> sum </identifier>
+                  <identifier> cellVal </identifier>
                   <symbol> = </symbol>
                   <expression>
                     <term>
@@ -755,7 +799,7 @@
                 </letStatement>
                 <letStatement>
                   <keyword> let </keyword>
-                  <identifier> fr </identifier>
+                  <identifier> rF </identifier>
                   <symbol> = </symbol>
                   <expression>
                     <term>
@@ -769,7 +813,7 @@
                   <symbol> ( </symbol>
                   <expression>
                     <term>
-                      <identifier> fr </identifier>
+                      <identifier> rF </identifier>
                     </term>
                     <symbol> &lt; </symbol>
                     <term>
@@ -781,7 +825,7 @@
                   <statements>
                     <letStatement>
                       <keyword> let </keyword>
-                      <identifier> fc </identifier>
+                      <identifier> cF </identifier>
                       <symbol> = </symbol>
                       <expression>
                         <term>
@@ -795,7 +839,7 @@
                       <symbol> ( </symbol>
                       <expression>
                         <term>
-                          <identifier> fc </identifier>
+                          <identifier> cF </identifier>
                         </term>
                         <symbol> &lt; </symbol>
                         <term>
@@ -807,100 +851,100 @@
                       <statements>
                         <letStatement>
                           <keyword> let </keyword>
-                          <identifier> inRow </identifier>
+                          <identifier> rIn </identifier>
                           <symbol> = </symbol>
                           <expression>
                             <term>
                               <symbol> ( </symbol>
                               <expression>
                                 <term>
-                                  <identifier> outRow </identifier>
+                                  <identifier> rOut </identifier>
                                 </term>
                                 <symbol> * </symbol>
                                 <term>
-                                  <identifier> stride </identifier>
+                                  <identifier> strideStep </identifier>
                                 </term>
                               </expression>
                               <symbol> ) </symbol>
                             </term>
                             <symbol> + </symbol>
                             <term>
-                              <identifier> fr </identifier>
+                              <identifier> rF </identifier>
                             </term>
                           </expression>
                           <symbol> ; </symbol>
                         </letStatement>
                         <letStatement>
                           <keyword> let </keyword>
-                          <identifier> inCol </identifier>
+                          <identifier> cIn </identifier>
                           <symbol> = </symbol>
                           <expression>
                             <term>
                               <symbol> ( </symbol>
                               <expression>
                                 <term>
-                                  <identifier> outCol </identifier>
+                                  <identifier> cOut </identifier>
                                 </term>
                                 <symbol> * </symbol>
                                 <term>
-                                  <identifier> stride </identifier>
+                                  <identifier> strideStep </identifier>
                                 </term>
                               </expression>
                               <symbol> ) </symbol>
                             </term>
                             <symbol> + </symbol>
                             <term>
-                              <identifier> fc </identifier>
+                              <identifier> cF </identifier>
                             </term>
                           </expression>
                           <symbol> ; </symbol>
                         </letStatement>
                         <letStatement>
                           <keyword> let </keyword>
-                          <identifier> sum </identifier>
+                          <identifier> cellVal </identifier>
                           <symbol> = </symbol>
                           <expression>
                             <term>
-                              <identifier> sum </identifier>
+                              <identifier> cellVal </identifier>
                             </term>
                             <symbol> + </symbol>
                             <term>
                               <symbol> ( </symbol>
                               <expression>
                                 <term>
-                                  <identifier> ArrayInput </identifier>
+                                  <identifier> inputTensor </identifier>
                                   <symbol> [ </symbol>
                                   <expression>
                                     <term>
                                       <symbol> ( </symbol>
                                       <expression>
                                         <term>
-                                          <identifier> inRow </identifier>
+                                          <identifier> rIn </identifier>
                                         </term>
                                         <symbol> * </symbol>
                                         <term>
-                                          <identifier> ArraySize </identifier>
+                                          <identifier> inputSize </identifier>
                                         </term>
                                       </expression>
                                       <symbol> ) </symbol>
                                     </term>
                                     <symbol> + </symbol>
                                     <term>
-                                      <identifier> inCol </identifier>
+                                      <identifier> cIn </identifier>
                                     </term>
                                   </expression>
                                   <symbol> ] </symbol>
                                 </term>
                                 <symbol> * </symbol>
                                 <term>
-                                  <identifier> ArrayFilter </identifier>
+                                  <identifier> kernelMatrix </identifier>
                                   <symbol> [ </symbol>
                                   <expression>
                                     <term>
                                       <symbol> ( </symbol>
                                       <expression>
                                         <term>
-                                          <identifier> fr </identifier>
+                                          <identifier> rF </identifier>
                                         </term>
                                         <symbol> * </symbol>
                                         <term>
@@ -911,7 +955,7 @@
                                     </term>
                                     <symbol> + </symbol>
                                     <term>
-                                      <identifier> fc </identifier>
+                                      <identifier> cF </identifier>
                                     </term>
                                   </expression>
                                   <symbol> ] </symbol>
@@ -924,11 +968,11 @@
                         </letStatement>
                         <letStatement>
                           <keyword> let </keyword>
-                          <identifier> fc </identifier>
+                          <identifier> cF </identifier>
                           <symbol> = </symbol>
                           <expression>
                             <term>
-                              <identifier> fc </identifier>
+                              <identifier> cF </identifier>
                             </term>
                             <symbol> + </symbol>
                             <term>
@@ -942,11 +986,11 @@
                     </whileStatement>
                     <letStatement>
                       <keyword> let </keyword>
-                      <identifier> fr </identifier>
+                      <identifier> rF </identifier>
                       <symbol> = </symbol>
                       <expression>
                         <term>
-                          <identifier> fr </identifier>
+                          <identifier> rF </identifier>
                         </term>
                         <symbol> + </symbol>
                         <term>
@@ -960,29 +1004,29 @@
                 </whileStatement>
                 <letStatement>
                   <keyword> let </keyword>
-                  <identifier> ArrayOutput </identifier>
+                  <identifier> outputTensor </identifier>
                   <symbol> [ </symbol>
                   <expression>
                     <term>
-                      <identifier> k </identifier>
+                      <identifier> outIdx </identifier>
                     </term>
                   </expression>
                   <symbol> ] </symbol>
                   <symbol> = </symbol>
                   <expression>
                     <term>
-                      <identifier> sum </identifier>
+                      <identifier> cellVal </identifier>
                     </term>
                   </expression>
                   <symbol> ; </symbol>
                 </letStatement>
                 <letStatement>
                   <keyword> let </keyword>
-                  <identifier> k </identifier>
+                  <identifier> outIdx </identifier>
                   <symbol> = </symbol>
                   <expression>
                     <term>
-                      <identifier> k </identifier>
+                      <identifier> outIdx </identifier>
                     </term>
                     <symbol> + </symbol>
                     <term>
@@ -993,11 +1037,11 @@
                 </letStatement>
                 <letStatement>
                   <keyword> let </keyword>
-                  <identifier> outCol </identifier>
+                  <identifier> cOut </identifier>
                   <symbol> = </symbol>
                   <expression>
                     <term>
-                      <identifier> outCol </identifier>
+                      <identifier> cOut </identifier>
                     </term>
                     <symbol> + </symbol>
                     <term>
@@ -1011,11 +1055,11 @@
             </whileStatement>
             <letStatement>
               <keyword> let </keyword>
-              <identifier> outRow </identifier>
+              <identifier> rOut </identifier>
               <symbol> = </symbol>
               <expression>
                 <term>
-                  <identifier> outRow </identifier>
+                  <identifier> rOut </identifier>
                 </term>
                 <symbol> + </symbol>
                 <term>
@@ -1048,23 +1092,23 @@
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> outDim </identifier>
+        <identifier> limit </identifier>
         <symbol> ; </symbol>
       </varDec>
       <varDec>
         <keyword> var </keyword>
         <keyword> int </keyword>
-        <identifier> i </identifier>
+        <identifier> y </identifier>
         <symbol> , </symbol>
-        <identifier> j </identifier>
+        <identifier> x </identifier>
         <symbol> , </symbol>
-        <identifier> k </identifier>
+        <identifier> pos </identifier>
         <symbol> ; </symbol>
       </varDec>
       <statements>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> outDim </identifier>
+          <identifier> limit </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -1079,7 +1123,7 @@
         </letStatement>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> k </identifier>
+          <identifier> pos </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -1090,7 +1134,7 @@
         </letStatement>
         <letStatement>
           <keyword> let </keyword>
-          <identifier> i </identifier>
+          <identifier> y </identifier>
           <symbol> = </symbol>
           <expression>
             <term>
@@ -1104,11 +1148,11 @@
           <symbol> ( </symbol>
           <expression>
             <term>
-              <identifier> i </identifier>
+              <identifier> y </identifier>
             </term>
             <symbol> &lt; </symbol>
             <term>
-              <identifier> outDim </identifier>
+              <identifier> limit </identifier>
             </term>
           </expression>
           <symbol> ) </symbol>
@@ -1116,7 +1160,7 @@
           <statements>
             <letStatement>
               <keyword> let </keyword>
-              <identifier> j </identifier>
+              <identifier> x </identifier>
               <symbol> = </symbol>
               <expression>
                 <term>
@@ -1130,11 +1174,11 @@
               <symbol> ( </symbol>
               <expression>
                 <term>
-                  <identifier> j </identifier>
+                  <identifier> x </identifier>
                 </term>
                 <symbol> &lt; </symbol>
                 <term>
-                  <identifier> outDim </identifier>
+                  <identifier> limit </identifier>
                 </term>
               </expression>
               <symbol> ) </symbol>
@@ -1149,11 +1193,11 @@
                   <expressionList>
                     <expression>
                       <term>
-                        <identifier> ArrayOutput </identifier>
+                        <identifier> outputTensor </identifier>
                         <symbol> [ </symbol>
                         <expression>
                           <term>
-                            <identifier> k </identifier>
+                            <identifier> pos </identifier>
                           </term>
                         </expression>
                         <symbol> ] </symbol>
@@ -1168,21 +1212,30 @@
                   <symbol> ( </symbol>
                   <expression>
                     <term>
-                      <identifier> j </identifier>
-                    </term>
-                    <symbol> &lt; </symbol>
-                    <term>
-                      <symbol> ( </symbol>
-                      <expression>
-                        <term>
-                          <identifier> outDim </identifier>
-                        </term>
-                        <symbol> - </symbol>
-                        <term>
-                          <integerConstant> 1 </integerConstant>
-                        </term>
-                      </expression>
-                      <symbol> ) </symbol>
+                      <symbol> ~ </symbol>
+                      <term>
+                        <symbol> ( </symbol>
+                        <expression>
+                          <term>
+                            <identifier> x </identifier>
+                          </term>
+                          <symbol> = </symbol>
+                          <term>
+                            <symbol> ( </symbol>
+                            <expression>
+                              <term>
+                                <identifier> limit </identifier>
+                              </term>
+                              <symbol> - </symbol>
+                              <term>
+                                <integerConstant> 1 </integerConstant>
+                              </term>
+                            </expression>
+                            <symbol> ) </symbol>
+                          </term>
+                        </expression>
+                        <symbol> ) </symbol>
+                      </term>
                     </term>
                   </expression>
                   <symbol> ) </symbol>
@@ -1209,11 +1262,11 @@
                 </ifStatement>
                 <letStatement>
                   <keyword> let </keyword>
-                  <identifier> k </identifier>
+                  <identifier> pos </identifier>
                   <symbol> = </symbol>
                   <expression>
                     <term>
-                      <identifier> k </identifier>
+                      <identifier> pos </identifier>
                     </term>
                     <symbol> + </symbol>
                     <term>
@@ -1224,11 +1277,11 @@
                 </letStatement>
                 <letStatement>
                   <keyword> let </keyword>
-                  <identifier> j </identifier>
+                  <identifier> x </identifier>
                   <symbol> = </symbol>
                   <expression>
                     <term>
-                      <identifier> j </identifier>
+                      <identifier> x </identifier>
                     </term>
                     <symbol> + </symbol>
                     <term>
@@ -1253,11 +1306,11 @@
             </doStatement>
             <letStatement>
               <keyword> let </keyword>
-              <identifier> i </identifier>
+              <identifier> y </identifier>
               <symbol> = </symbol>
               <expression>
                 <term>
-                  <identifier> i </identifier>
+                  <identifier> y </identifier>
                 </term>
                 <symbol> + </symbol>
                 <term>
@@ -1290,7 +1343,7 @@
       <statements>
         <doStatement>
           <keyword> do </keyword>
-          <identifier> ArrayInput </identifier>
+          <identifier> inputTensor </identifier>
           <symbol> . </symbol>
           <identifier> dispose </identifier>
           <symbol> ( </symbol>
@@ -1301,7 +1354,7 @@
         </doStatement>
         <doStatement>
           <keyword> do </keyword>
-          <identifier> ArrayOutput </identifier>
+          <identifier> outputTensor </identifier>
           <symbol> . </symbol>
           <identifier> dispose </identifier>
           <symbol> ( </symbol>
