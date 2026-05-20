@@ -1,0 +1,336 @@
+function Conv.new 2
+push constant 3
+call Memory.alloc 1
+pop pointer 0
+push argument 0
+pop this 2
+push constant 1
+pop static 1
+push argument 0
+push argument 0
+call Math.multiply 2
+call Array.new 1
+pop this 0
+push argument 0
+push constant 3
+sub
+push static 1
+call Math.divide 2
+push constant 1
+add
+pop local 0
+push local 0
+push constant 1
+lt
+not
+if-goto IF_FALSE0
+push constant 0
+push constant 1
+neg
+call Memory.poke 2
+pop temp 0
+push constant 1
+pop local 1
+goto IF_END1
+label IF_FALSE0
+push local 0
+push local 0
+call Math.multiply 2
+pop local 1
+label IF_END1
+push local 1
+call Array.new 1
+pop this 1
+push static 0
+push constant 0
+eq
+not
+if-goto IF_FALSE2
+push constant 9
+call Array.new 1
+pop static 0
+label IF_FALSE2
+push pointer 0
+return
+function Conv.initFilter 1
+push argument 0
+pop pointer 0
+push constant 0
+pop local 0
+label WHILE_EXP4
+push local 0
+push constant 9
+lt
+not
+if-goto WHILE_END5
+push static 0
+push local 0
+add
+push argument 1
+push local 0
+add
+pop pointer 1
+push that 0
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 0
+push constant 1
+add
+pop local 0
+goto WHILE_EXP4
+label WHILE_END5
+push constant 0
+return
+function Conv.getArrayInput 2
+push argument 0
+pop pointer 0
+push argument 2
+pop this 2
+push argument 2
+push argument 2
+call Math.multiply 2
+pop local 1
+push constant 0
+pop local 0
+label WHILE_EXP6
+push local 0
+push local 1
+lt
+not
+if-goto WHILE_END7
+push this 0
+push local 0
+add
+push argument 1
+push local 0
+add
+pop pointer 1
+push that 0
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 0
+push constant 1
+add
+pop local 0
+goto WHILE_EXP6
+label WHILE_END7
+push constant 0
+return
+function Conv.calcOutputDim 0
+push argument 0
+pop pointer 0
+push this 2
+push constant 3
+sub
+push static 1
+call Math.divide 2
+push constant 1
+add
+return
+function Conv.conv2d 9
+push argument 0
+pop pointer 0
+push pointer 0
+call Conv.calcOutputDim 1
+pop local 0
+push local 0
+push constant 1
+lt
+not
+if-goto IF_FALSE8
+push constant 0
+push constant 1
+neg
+call Memory.poke 2
+pop temp 0
+push constant 0
+return
+label IF_FALSE8
+push constant 0
+pop local 8
+push constant 0
+pop local 1
+label WHILE_EXP10
+push local 1
+push local 0
+lt
+not
+if-goto WHILE_END11
+push constant 0
+pop local 2
+label WHILE_EXP12
+push local 2
+push local 0
+lt
+not
+if-goto WHILE_END13
+push constant 0
+pop local 7
+push constant 0
+pop local 5
+label WHILE_EXP14
+push local 5
+push constant 3
+lt
+not
+if-goto WHILE_END15
+push constant 0
+pop local 6
+label WHILE_EXP16
+push local 6
+push constant 3
+lt
+not
+if-goto WHILE_END17
+push local 1
+push static 1
+call Math.multiply 2
+push local 5
+add
+pop local 3
+push local 2
+push static 1
+call Math.multiply 2
+push local 6
+add
+pop local 4
+push local 7
+push this 0
+push local 3
+push this 2
+call Math.multiply 2
+push local 4
+add
+add
+pop pointer 1
+push that 0
+push static 0
+push local 5
+push constant 3
+call Math.multiply 2
+push local 6
+add
+add
+pop pointer 1
+push that 0
+call Math.multiply 2
+add
+pop local 7
+push local 6
+push constant 1
+add
+pop local 6
+goto WHILE_EXP16
+label WHILE_END17
+push local 5
+push constant 1
+add
+pop local 5
+goto WHILE_EXP14
+label WHILE_END15
+push this 1
+push local 8
+add
+push local 7
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 8
+push constant 1
+add
+pop local 8
+push local 2
+push constant 1
+add
+pop local 2
+goto WHILE_EXP12
+label WHILE_END13
+push local 1
+push constant 1
+add
+pop local 1
+goto WHILE_EXP10
+label WHILE_END11
+push constant 0
+return
+function Conv.printOutput 4
+push argument 0
+pop pointer 0
+push pointer 0
+call Conv.calcOutputDim 1
+pop local 0
+push constant 0
+pop local 3
+push constant 0
+pop local 1
+label WHILE_EXP18
+push local 1
+push local 0
+lt
+not
+if-goto WHILE_END19
+push constant 0
+pop local 2
+label WHILE_EXP20
+push local 2
+push local 0
+lt
+not
+if-goto WHILE_END21
+push this 1
+push local 3
+add
+pop pointer 1
+push that 0
+call Output.printInt 1
+pop temp 0
+push local 2
+push local 0
+push constant 1
+sub
+lt
+not
+if-goto IF_FALSE22
+push constant 32
+call Output.printChar 1
+pop temp 0
+label IF_FALSE22
+push local 3
+push constant 1
+add
+pop local 3
+push local 2
+push constant 1
+add
+pop local 2
+goto WHILE_EXP20
+label WHILE_END21
+call Output.println 0
+pop temp 0
+push local 1
+push constant 1
+add
+pop local 1
+goto WHILE_EXP18
+label WHILE_END19
+push constant 0
+return
+function Conv.dispose 0
+push argument 0
+pop pointer 0
+push this 0
+call Array.dispose 1
+pop temp 0
+push this 1
+call Array.dispose 1
+pop temp 0
+push pointer 0
+call Memory.deAlloc 1
+pop temp 0
+push constant 0
+return

@@ -1,0 +1,132 @@
+class Conv {
+    static Array ArrayFilter;
+    static int stride;
+
+    field Array ArrayInput;
+    field Array ArrayOutput;
+    field int ArraySize;
+
+    constructor Conv new(int N) {
+        var int outDim;
+        var int outTotal;
+
+        let ArraySize = N;
+        let stride = 1;
+        let ArrayInput = Array.new(N * N);
+        let outDim = ((N - 3) / stride) + 1;
+
+        if (outDim < 1) {
+            do Memory.poke(0, -1);
+            let outTotal = 1;
+        } else {
+            let outTotal = outDim * outDim;
+        }
+
+        let ArrayOutput = Array.new(outTotal);
+
+        if (ArrayFilter = null) {
+            let ArrayFilter = Array.new(9);
+        }
+
+        return this;
+    }
+
+    method void initFilter(Array values) {
+        var int i;
+        let i = 0;
+        while (i < 9) {
+            let ArrayFilter[i] = values[i];
+            let i = i + 1;
+        }
+        return;
+    }
+
+    method void getArrayInput(Array input, int size) {
+        var int i;
+        var int total;
+
+        let ArraySize = size;
+        let total = size * size;
+        let i = 0;
+        while (i < total) {
+            let ArrayInput[i] = input[i];
+            let i = i + 1;
+        }
+        return;
+    }
+
+    method int calcOutputDim() {
+        return ((ArraySize - 3) / stride) + 1;
+    }
+
+    method void conv2d() {
+        var int outDim;
+        var int outRow, outCol;
+        var int inRow, inCol;
+        var int fr, fc;
+        var int sum;
+        var int k;
+
+        let outDim = calcOutputDim();
+
+        if (outDim < 1) {
+            do Memory.poke(0, -1);
+            return;
+        }
+
+        let k = 0;
+        let outRow = 0;
+        while (outRow < outDim) {
+            let outCol = 0;
+            while (outCol < outDim) {
+                let sum = 0;
+                let fr = 0;
+                while (fr < 3) {
+                    let fc = 0;
+                    while (fc < 3) {
+                        let inRow = (outRow * stride) + fr;
+                        let inCol = (outCol * stride) + fc;
+                        let sum = sum + (ArrayInput[(inRow * ArraySize) + inCol] * ArrayFilter[(fr * 3) + fc]);
+                        let fc = fc + 1;
+                    }
+                    let fr = fr + 1;
+                }
+                let ArrayOutput[k] = sum;
+                let k = k + 1;
+                let outCol = outCol + 1;
+            }
+            let outRow = outRow + 1;
+        }
+        return;
+    }
+
+    method void printOutput() {
+        var int outDim;
+        var int i, j, k;
+
+        let outDim = calcOutputDim();
+        let k = 0;
+        let i = 0;
+        while (i < outDim) {
+            let j = 0;
+            while (j < outDim) {
+                do Output.printInt(ArrayOutput[k]);
+                if (j < (outDim - 1)) {
+                    do Output.printChar(32);
+                }
+                let k = k + 1;
+                let j = j + 1;
+            }
+            do Output.println();
+            let i = i + 1;
+        }
+        return;
+    }
+
+    method void dispose() {
+        do ArrayInput.dispose();
+        do ArrayOutput.dispose();
+        do Memory.deAlloc(this);
+        return;
+    }
+}

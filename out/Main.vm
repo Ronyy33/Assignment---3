@@ -1,0 +1,188 @@
+function Main.main 4
+push constant 25
+call Array.new 1
+pop local 1
+push constant 0
+pop local 3
+label WHILE_EXP0
+push local 3
+push constant 25
+lt
+not
+if-goto WHILE_END1
+push local 1
+push local 3
+add
+push local 3
+push constant 1
+add
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 3
+push constant 1
+add
+pop local 3
+goto WHILE_EXP0
+label WHILE_END1
+push constant 9
+call Array.new 1
+pop local 2
+push local 2
+push constant 0
+add
+push constant 0
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 2
+push constant 1
+add
+push constant 1
+neg
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 2
+push constant 2
+add
+push constant 0
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 2
+push constant 3
+add
+push constant 1
+neg
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 2
+push constant 4
+add
+push constant 5
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 2
+push constant 5
+add
+push constant 1
+neg
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 2
+push constant 6
+add
+push constant 0
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 2
+push constant 7
+add
+push constant 1
+neg
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push local 2
+push constant 8
+add
+push constant 0
+pop temp 0
+pop pointer 1
+push temp 0
+pop that 0
+push constant 5
+call Conv.new 1
+pop local 0
+push local 0
+push local 2
+call Conv.initFilter 2
+pop temp 0
+push local 0
+push local 1
+push constant 5
+call Conv.getArrayInput 3
+pop temp 0
+push local 0
+call Conv.conv2d 1
+pop temp 0
+push constant 23
+call String.new 1
+push constant 67
+call String.appendChar 2
+push constant 111
+call String.appendChar 2
+push constant 110
+call String.appendChar 2
+push constant 118
+call String.appendChar 2
+push constant 32
+call String.appendChar 2
+push constant 79
+call String.appendChar 2
+push constant 117
+call String.appendChar 2
+push constant 116
+call String.appendChar 2
+push constant 112
+call String.appendChar 2
+push constant 117
+call String.appendChar 2
+push constant 116
+call String.appendChar 2
+push constant 32
+call String.appendChar 2
+push constant 40
+call String.appendChar 2
+push constant 53
+call String.appendChar 2
+push constant 120
+call String.appendChar 2
+push constant 53
+call String.appendChar 2
+push constant 44
+call String.appendChar 2
+push constant 32
+call String.appendChar 2
+push constant 83
+call String.appendChar 2
+push constant 61
+call String.appendChar 2
+push constant 49
+call String.appendChar 2
+push constant 41
+call String.appendChar 2
+push constant 58
+call String.appendChar 2
+call Output.printString 1
+pop temp 0
+call Output.println 0
+pop temp 0
+push local 0
+call Conv.printOutput 1
+pop temp 0
+push local 0
+call Conv.dispose 1
+pop temp 0
+push local 1
+call Array.dispose 1
+pop temp 0
+push local 2
+call Array.dispose 1
+pop temp 0
+push constant 0
+return

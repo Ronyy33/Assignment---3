@@ -1,0 +1,461 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage{microtype}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    urlcolor=blue!60!black,
+    citecolor=blue!60!black,
+}
+
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codecomment}{RGB}{100,100,100}
+\definecolor{codekw}{RGB}{0,80,160}
+\definecolor{codestr}{RGB}{160,0,0}
+
+\lstdefinestyle{hackvm}{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codekw}\bfseries,
+    commentstyle=\color{codecomment}\itshape,
+    stringstyle=\color{codestr},
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{gray!50},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b,
+}
+
+\lstdefinestyle{pseudo}{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codekw}\bfseries,
+    commentstyle=\color{codecomment}\itshape,
+    morekeywords={if, else, return, for, while, function, call, class, let, do, var, field, static, constructor, method, def, self},
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{gray!50},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b,
+}
+
+\lstset{style=pseudo}
+
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{}{0em}{\thesection.\quad}
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{\thesubsection\quad}
+
+\title{%
+    \textbf{DA2304 - Introduction to Computer Systems} \\[0.5em]
+    \textbf{Assignment 3}
+}
+\author{Kiran Kumar P \\
+        DA24B008
+        }
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\hrule
+
+\section*{Extra Credit}
+
+My recent favorite song has been \textit{Not Like Us} by \textit{Kendrick Lamar}.
+
+\noindent
+Link: \href{https://youtu.be/T6eK-2OQtew}{Not Like Us - Kendrick Lamar}
+
+\vspace{1em}
+\hrule
+\vspace{1em}
+
+% ============================================================
+\section{Introduction}
+% ============================================================
+
+This assignment extends the compilation pipeline from Assignment 2 by building the compiler frontend. The pipeline now covers the full path from Jack source code down to Hack assembly:
+
+\begin{center}
+\texttt{.jack} $\rightarrow$ \texttt{Tokens (XML)} $\rightarrow$ \texttt{.vm} $\rightarrow$ \texttt{.asm}
+\end{center}
+
+There are two main deliverables: a Jack program implementing 2D convolution (\texttt{Conv.jack} and \texttt{Main.jack}), and a compiler frontend consisting of a tokenizer, recursive-descent parser, symbol table, and VM code generator. The compiler produces both an XML parse tree (for validation) and VM code (for execution). The generated VM code is then fed into my Assignment 2 VM translator to produce Hack assembly.
+
+% ============================================================
+\section{Architecture}
+% ============================================================
+
+The compiler is split into five Python modules:
+
+\begin{itemize}
+    \item \textbf{JackTokenizer.py}: Strips comments using a state machine and tokenizes the source into keywords, symbols, integer constants, string constants, and identifiers. Writes the token XML file (\texttt{<Class>T.xml}).
+    \item \textbf{CompilationEngine.py}: Recursive-descent parser implementing every non-terminal in the Jack grammar. Simultaneously writes the parse tree XML (\texttt{<Class>.xml}) and emits VM code through the VMWriter.
+    \item \textbf{SymbolTable.py}: Two-scope symbol table (class-level and subroutine-level) mapping identifiers to \texttt{(type, kind, index)}.
+    \item \textbf{VMWriter.py}: Thin wrapper that writes VM commands (\texttt{push}, \texttt{pop}, \texttt{call}, \texttt{function}, etc.) to the output file.
+    \item \textbf{JackCompiler.py}: Entry point that wires everything together. Takes a \texttt{.jack} file or directory and runs the full pipeline.
+\end{itemize}
+
+The key design decision was to have the CompilationEngine do both XML generation and VM code generation in a single pass. This means every \texttt{compile\_*} method writes XML tags while also emitting VM instructions. An alternative would have been two separate passes, but the single-pass approach keeps the code simpler and avoids having to maintain a separate AST data structure.
+
+% ============================================================
+\section{Tokenizer Design}
+% ============================================================
+
+\subsection{Comment Stripping}
+
+The tokenizer strips comments using a character-by-character state machine rather than regex. This is necessary because block comments (\texttt{/* ... */}) can span multiple lines, and a line-by-line regex approach would fail on cases like:
+
+\begin{lstlisting}[style=pseudo, caption={Multi-line comment that breaks line-based regex}]
+/* this comment
+   spans multiple
+   lines */ let x = 5;
+\end{lstlisting}
+
+A single-line regex like \texttt{/\textbackslash*.*?\textbackslash*/} applied per line would not match anything on lines 1 and 2, and would leave the \texttt{*/} on line 3 as a syntax error. The state machine tracks whether we're inside a block comment, inside a string literal (to avoid stripping \texttt{//} inside strings), or in normal code.
+
+\subsection{Tokenization}
+
+After comment stripping, the tokenizer walks the cleaned source character by character:
+
+\begin{itemize}
+    \item Whitespace is skipped.
+    \item Characters in the symbol set are emitted as \texttt{symbol} tokens.
+    \item Digit sequences become \texttt{integerConstant} tokens.
+    \item Double-quoted sequences become \texttt{stringConstant} tokens (quotes stripped).
+    \item Alphanumeric sequences starting with a letter or underscore are checked against the keyword set; if found, they're \texttt{keyword} tokens, otherwise \texttt{identifier} tokens.
+\end{itemize}
+
+The five XML-unsafe symbols (\texttt{<}, \texttt{>}, \texttt{\&}, \texttt{"}) are escaped in the XML output. One bug I hit early on was escaping \texttt{\&} \emph{after} \texttt{<}, which turned \texttt{\&lt;} into \texttt{\&amp;lt;}. The fix was to always escape \texttt{\&} first.
+
+% ============================================================
+\section{Parser Design}
+% ============================================================
+
+The parser implements recursive descent following the Jack grammar from Figure 10.5 of the textbook. Each grammar non-terminal has a corresponding \texttt{compile\_*} method.
+
+\subsection{Token Navigation}
+
+The parser maintains a position index into the flat token list. Three helpers drive the parsing:
+
+\begin{itemize}
+    \item \texttt{\_eat(type, value)}: Consumes the current token, writes it to XML, asserts it matches the expected type/value, and advances. This is the workhorse --- almost every terminal in the grammar goes through \texttt{\_eat}.
+    \item \texttt{\_is\_token(type, value)}: Peeks at the current token without consuming. Used for lookahead decisions (e.g., is the next statement a \texttt{let} or a \texttt{while}?).
+    \item \texttt{\_peek\_token()}: Looks one token ahead. Only needed for the LL(2) case in \texttt{compile\_term}.
+\end{itemize}
+
+\subsection{The LL(2) Problem in \texttt{compileTerm}}
+
+The Jack grammar is LL(1) everywhere except when parsing a term that starts with an identifier. At that point, the current token alone doesn't tell you whether it's:
+\begin{itemize}
+    \item A simple variable (\texttt{x})
+    \item An array access (\texttt{arr[i]})
+    \item A subroutine call (\texttt{foo()}, \texttt{obj.bar()}, \texttt{Class.baz()})
+\end{itemize}
+
+The solution is to peek one token ahead. If the next token is \texttt{[}, it's an array access. If it's \texttt{(} or \texttt{.}, it's a subroutine call. Otherwise it's a simple variable. This is the only place in the parser where we need LL(2) lookahead.
+
+\subsection{Expression Parsing}
+
+Jack has no operator precedence --- evaluation is strictly left-to-right. This makes expression parsing straightforward:
+
+\begin{lstlisting}[style=pseudo, caption={Expression compilation (left-to-right)}]
+compileExpression:
+    compileTerm
+    while currentToken is an op:
+        eat(op)
+        compileTerm
+        emit(op)   // postfix: operands first, then operator
+\end{lstlisting}
+
+Multiplication and division are handled as subroutine calls (\texttt{Math.multiply}, \texttt{Math.divide}) since the Hack ALU doesn't support them natively.
+
+% ============================================================
+\section{Symbol Table Handling}
+% ============================================================
+
+The symbol table has two scopes:
+
+\begin{itemize}
+    \item \textbf{Class-level}: Holds \texttt{static} and \texttt{field} variables. Persists for the entire class compilation. Fields map to the \texttt{this} segment, statics to the \texttt{static} segment.
+    \item \textbf{Subroutine-level}: Holds \texttt{argument} and \texttt{var} (local) variables. Reset at the start of each subroutine. Arguments map to the \texttt{argument} segment, locals to the \texttt{local} segment.
+\end{itemize}
+
+When looking up a variable, the compiler first checks the subroutine-level table, then falls back to the class-level table. If the name isn't found in either, it's treated as a class name (for static function calls like \texttt{Output.printInt}).
+
+\subsection{Symbol Table State in \texttt{Conv.conv2d()}}
+
+At the point where the inner-loop accumulator is assigned (\texttt{let sum = sum + ...}), the symbol tables look like this:
+
+\begin{table}[h!]
+\centering
+\caption{Class-level symbol table for Conv}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Name} & \textbf{Type} & \textbf{Kind} & \textbf{Index} \\
+\midrule
+ArrayFilter & Array & static & 0 \\
+stride & int & static & 1 \\
+ArrayInput & Array & this & 0 \\
+ArrayOutput & Array & this & 1 \\
+ArraySize & int & this & 2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\caption{Subroutine-level symbol table for conv2d}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Name} & \textbf{Type} & \textbf{Kind} & \textbf{Index} \\
+\midrule
+this & Conv & argument & 0 \\
+outDim & int & local & 0 \\
+outRow & int & local & 1 \\
+outCol & int & local & 2 \\
+inRow & int & local & 3 \\
+inCol & int & local & 4 \\
+fr & int & local & 5 \\
+fc & int & local & 6 \\
+sum & int & local & 7 \\
+k & int & local & 8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+So \texttt{sum} resolves to \texttt{local 7}, \texttt{ArrayInput} to \texttt{this 0}, \texttt{ArraySize} to \texttt{this 2}, \texttt{ArrayFilter} to \texttt{static 0}, and \texttt{stride} to \texttt{static 1}. The implicit \texttt{this} at argument 0 is pushed and popped into \texttt{pointer 0} at the start of the method.
+
+% ============================================================
+\section{VM Code Generation}
+% ============================================================
+
+\subsection{Constructors}
+
+When compiling a constructor, the engine:
+\begin{enumerate}
+    \item Counts the number of field variables in the class.
+    \item Emits \texttt{push constant <nFields>} followed by \texttt{call Memory.alloc 1}.
+    \item Pops the returned base address into \texttt{pointer 0}, setting up \texttt{THIS}.
+\end{enumerate}
+
+For \texttt{Conv.new}, this allocates 3 words (for \texttt{ArrayInput}, \texttt{ArrayOutput}, \texttt{ArraySize}).
+
+\subsection{Methods}
+
+Methods receive the target object as implicit argument 0. The first thing the compiled method does is:
+
+\begin{lstlisting}[style=hackvm, caption={Method preamble}]
+push argument 0
+pop pointer 0     // THIS = the object we're operating on
+\end{lstlisting}
+
+This means \texttt{this 0}, \texttt{this 1}, etc. now refer to the object's fields. All subsequent field accesses go through the \texttt{this} segment.
+
+When \emph{calling} a method (e.g., \texttt{conv.initFilter(filter)}), the compiler pushes the object reference as the first argument before the explicit arguments, and increments the argument count by 1.
+
+\subsection{Array Access}
+
+Array reads use the \texttt{pointer 1} / \texttt{that 0} idiom:
+
+\begin{lstlisting}[style=hackvm, caption={Reading arr[i]}]
+push arr           // base address
+push i             // index
+add                // arr + i
+pop pointer 1      // THAT = arr + i
+push that 0        // value at arr[i]
+\end{lstlisting}
+
+Array writes are trickier because the right-hand side expression might also contain array accesses, which would clobber \texttt{THAT}. The solution is to save the computed value to \texttt{temp 0}:
+
+\begin{lstlisting}[style=hackvm, caption={Writing arr[i] = expr (safe version)}]
+push arr           // base address
+push i             // index
+add                // arr + i on stack
+// ... compile expr ...
+pop temp 0         // save expr value
+pop pointer 1      // THAT = arr + i
+push temp 0        // restore expr value
+pop that 0         // *(arr+i) = expr
+\end{lstlisting}
+
+\subsection{Compilation Correctness: Tracing \texttt{let ArrayOutput[k] = sum}}
+
+For the 5$\times$5 test case, consider the first output assignment where $k = 0$ and $sum = 7$. The emitted VM code is:
+
+\begin{lstlisting}[style=hackvm, caption={VM trace for let ArrayOutput[k] = sum}]
+push this 1       // ArrayOutput base address (say, addr 2050)
+push local 8      // k = 0
+add               // 2050 + 0 = 2050
+push local 7      // sum = 7
+pop temp 0        // temp 0 = 7
+pop pointer 1     // THAT = 2050
+push temp 0       // push 7
+pop that 0        // RAM[2050] = 7
+\end{lstlisting}
+
+So \texttt{THAT} is set to the base address of \texttt{ArrayOutput} plus offset $k$, and the computed sum is stored there via \texttt{that 0}. This correctly writes 7 to the first element of the output array.
+
+\subsection{Control Flow}
+
+\textbf{If statements} use the ``negate and branch'' pattern from the textbook:
+
+\begin{lstlisting}[style=pseudo, caption={If compilation pattern}]
+// compile condition expression
+not
+if-goto IF_FALSE_L
+// compile true branch
+goto IF_END_L
+label IF_FALSE_L
+// compile else branch (if any)
+label IF_END_L
+\end{lstlisting}
+
+\textbf{While statements} use a loop-back pattern:
+
+\begin{lstlisting}[style=pseudo, caption={While compilation pattern}]
+label WHILE_EXP_L
+// compile condition
+not
+if-goto WHILE_END_L
+// compile body
+goto WHILE_EXP_L
+label WHILE_END_L
+\end{lstlisting}
+
+Labels are generated with a global counter to ensure uniqueness across the entire class.
+
+% ============================================================
+\section{Conv.jack Implementation}
+% ============================================================
+
+\subsection{Design Choices}
+
+\begin{itemize}
+    \item \textbf{Stride}: Set to 1 in the constructor. This gives a 3$\times$3 output for a 5$\times$5 input with $F = 3$.
+    \item \textbf{Filter}: A Laplacian-like edge detector \texttt{[0, -1, 0, -1, 5, -1, 0, -1, 0]}. This highlights each pixel relative to its 4-connected neighbours. It's a standard choice in image processing and produces non-trivial output values that are easy to verify manually.
+    \item \textbf{Flattened arrays}: Both input and output matrices are stored as 1D arrays in row-major order. Element $(r, c)$ of an $N \times N$ matrix is at index $r \cdot N + c$.
+    \item \textbf{Static vs. field}: The filter and stride are \texttt{static} (shared across all Conv instances), while the input/output arrays and size are \texttt{field} (per-instance).
+\end{itemize}
+
+\subsection{Output Dimension Formula}
+
+With $F = 3$, $P = 0$:
+\[
+O = \left\lfloor \frac{N - 3}{S} \right\rfloor + 1
+\]
+
+For $N = 5, S = 1$: $O = \lfloor 2/1 \rfloor + 1 = 3$.
+
+For $N = 9, S = 2$: $O = \lfloor 6/2 \rfloor + 1 = 4$.
+
+Jack's integer division gives the floor for free on non-negative operands.
+
+\subsection{Bounds Checking}
+
+If $O < 1$ (i.e., the input is too small for even one window), the constructor and \texttt{conv2d} signal an error by writing $-1$ to \texttt{RAM[0]} via \texttt{Memory.poke(0, -1)}. This follows the error-flag convention from Assignment 2.
+
+\subsection{Convolution Stride Analysis}
+
+For $S = 1$ with a 9$\times$9 input, the output is $7 \times 7 = 49$ elements. For $S = 2$, it's $4 \times 4 = 16$ elements. In both cases, each output element requires a 3$\times$3 = 9-element MAC computation, so the inner work per element is constant. The total VM instruction count scales as $O(O^2) = O\!\left(\left(\frac{N-3}{S}+1\right)^2\right)$. So yes, stride affects the constant factor significantly (49 vs 16 MAC operations), but the asymptotic complexity is still $\Theta(O^2)$ where $O$ depends on $S$.
+
+% ============================================================
+\section{Testing Methodology}
+% ============================================================
+
+Testing followed a bottom-up approach:
+
+\begin{enumerate}
+    \item \textbf{Tokenizer}: Compiled \texttt{Conv.jack} and checked that \texttt{ConvT.xml} had the right number of tokens (646) and that all comments were stripped. Verified XML escaping of \texttt{<}, \texttt{>}, \texttt{\&} symbols.
+    \item \textbf{Parser}: Inspected \texttt{Conv.xml} to verify correct nesting of all non-terminals. Checked that every \texttt{<statements>} block had matching open/close tags and that expressions were parsed with correct structure.
+    \item \textbf{VM Code}: Manually traced the VM output for small cases. For the constructor, verified that \texttt{Memory.alloc} was called with the right field count (3). For methods, verified \texttt{argument 0} was popped into \texttt{pointer 0}. For array accesses, verified the \texttt{pointer 1}/\texttt{that 0} pattern.
+    \item \textbf{Numerical Verification}: Wrote a Python script to compute the expected convolution output independently. For the 5$\times$5 input with the Laplacian filter, the expected output is \texttt{[7, 8, 9, 12, 13, 14, 17, 18, 19]}.
+    \item \textbf{End-to-End}: Fed the \texttt{.vm} files into the Assignment 2 VM translator to produce \texttt{.asm}, confirming the full pipeline works without errors.
+\end{enumerate}
+
+% ============================================================
+\section{Bugs and Debugging Observations}
+% ============================================================
+
+\subsection{Double XML Escaping}
+
+The first bug I hit was in the XML escape function. My initial implementation used a dictionary iteration to replace special characters:
+
+\begin{lstlisting}[style=pseudo, caption={Buggy XML escape}]
+for char, escaped in XML_ESCAPES.items():
+    text = text.replace(char, escaped)
+\end{lstlisting}
+
+The problem is that Python dictionaries (before 3.7) don't guarantee iteration order, and even in 3.7+ the order depends on insertion. If \texttt{\&} is replaced \emph{after} \texttt{<}, then \texttt{<} first becomes \texttt{\&lt;}, and then the \texttt{\&} in \texttt{\&lt;} gets replaced again, producing \texttt{\&amp;lt;}. The fix was to always replace \texttt{\&} first:
+
+\begin{lstlisting}[style=pseudo, caption={Fixed XML escape}]
+text = text.replace('&', '&amp;')   # & first!
+text = text.replace('<', '&lt;')
+text = text.replace('>', '&gt;')
+\end{lstlisting}
+
+\subsection{Method Argument Count}
+
+An early version of the compiler was generating wrong argument counts for method calls. When you write \texttt{conv.initFilter(filter)}, the compiler needs to push the object reference as argument 0 and then the explicit arguments. So the call becomes \texttt{call Conv.initFilter 2} (not 1). I initially forgot to add 1 to the argument count for method calls, which caused the callee to read the wrong values from its argument segment. The symptom was that every method was reading garbage from its first argument --- it took a while to figure out because the error manifested several call levels deep.
+
+\subsection{Array Write Safety}
+
+The naive approach to \texttt{let a[i] = expr} is to compute \texttt{a + i}, pop it into \texttt{pointer 1}, then compile the expression and pop into \texttt{that 0}. But if the expression itself contains array accesses (like \texttt{let a[i] = b[j]}), compiling the right-hand side will clobber \texttt{pointer 1}. The fix (from the textbook) is to leave the target address on the stack, compile the expression, then use \texttt{temp 0} as a shuttle:
+
+The stack-based approach keeps the target address safe on the stack while the RHS is being evaluated. This was one of those cases where following the textbook's idiom exactly paid off --- I initially tried to ``optimise'' by avoiding \texttt{temp 0}, and it silently corrupted array writes whenever the RHS had any complexity.
+
+% ============================================================
+\section{Sample Outputs}
+% ============================================================
+
+\subsection{5$\times$5 Convolution}
+
+Input matrix (values 1--25):
+\begin{verbatim}
+  1   2   3   4   5
+  6   7   8   9  10
+ 11  12  13  14  15
+ 16  17  18  19  20
+ 21  22  23  24  25
+\end{verbatim}
+
+Filter (Laplacian-like): \texttt{[0, -1, 0, -1, 5, -1, 0, -1, 0]}
+
+Output (3$\times$3, stride=1):
+\begin{verbatim}
+  7   8   9
+ 12  13  14
+ 17  18  19
+\end{verbatim}
+
+Manual verification of position (0,0): $0 \cdot 1 + (-1) \cdot 2 + 0 \cdot 3 + (-1) \cdot 6 + 5 \cdot 7 + (-1) \cdot 8 + 0 \cdot 11 + (-1) \cdot 12 + 0 \cdot 13 = -2 - 6 + 35 - 8 - 12 = 7$. Correct.
+
+% ============================================================
+\section{Conclusion}
+% ============================================================
+
+Building the compiler frontend gave a much better understanding of how high-level constructs like object fields, method calls, and array accesses get lowered to flat memory operations. The most instructive part was seeing how the symbol table and the VM's segment model work together --- fields become \texttt{this} references, locals become \texttt{local} references, and the pointer segment acts as a register file for \texttt{THIS} and \texttt{THAT}.
+
+The convolution implementation was a good test of the compiler because it exercises most of the language features: constructors, methods, arrays, nested loops, arithmetic expressions, and function calls. Having the expected output computed independently in Python made it easy to validate the generated code.
+
+The full pipeline --- Jack source to tokens to VM code to assembly --- works end-to-end. The VM files produced by this compiler, when fed into the Assignment 2 VM translator, generate valid Hack assembly.
+
+\end{document}
